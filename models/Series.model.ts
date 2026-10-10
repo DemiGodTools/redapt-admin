@@ -34,11 +34,21 @@ const SeriesSchema = new Schema<ISeries>(
       default: SubscriptionPlan.FREE,
     },
     cover: { type: String, required: true },
-    category: { type: Schema.Types.ObjectId, ref: "Category", required: true },
+    category: {
+      type: Schema.Types.ObjectId,
+      ref: "Category",
+      required: true,
+      index: true,
+    },
+    subCategory: {
+      type: Schema.Types.ObjectId,
+      ref: "Category",
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
 
 export const Series =
   models.Series || model<ISeries>("Series", SeriesSchema);
-

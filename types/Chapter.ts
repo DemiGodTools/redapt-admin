@@ -12,6 +12,7 @@ export interface IChapter {
   comments: Types.ObjectId[];
   cover?: string;
   category: Types.ObjectId;
+  subCategory?: Types.ObjectId | null;
   series?: Types.ObjectId;
   likes: number;
   author: string,

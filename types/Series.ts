@@ -16,6 +16,7 @@ export interface ISeries {
   for: SubscriptionPlan;
   cover: string;
   category: Types.ObjectId;
+  subCategory?: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
