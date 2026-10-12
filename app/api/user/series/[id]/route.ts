@@ -17,6 +17,7 @@ const { id } = await params
     const series = await Series.findById(id)
       .populate("category")
       .populate("chapters.content")
+      .populate("recommendationBookId")
       .lean();
 
     if (!series) {

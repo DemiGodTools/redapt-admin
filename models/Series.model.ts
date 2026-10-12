@@ -46,6 +46,15 @@ const SeriesSchema = new Schema<ISeries>(
       default: null,
       index: true,
     },
+    type: { type: String, default: "normal" },
+    author: { type: String, default: "" },
+    fee: { type: Number, default: 0 },
+    recommendationBookId: {
+      type: Schema.Types.ObjectId,
+      ref: "Chapter",
+      default: null,
+    },
+    recommendationText: { type: String, default: "" },
   },
   { timestamps: true }
 );

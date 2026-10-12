@@ -17,6 +17,12 @@ export interface ISeries {
   cover: string;
   category: Types.ObjectId;
   subCategory?: Types.ObjectId | null;
+  type?: string;
+  author?: string;
+  fee?: number;
+  recommendationBookId?: any;
+  recommendationText?: string;
+  items?: ISeriesContent[];
   createdAt: Date;
   updatedAt: Date;
 }
