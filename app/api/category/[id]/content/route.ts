@@ -6,12 +6,12 @@ import mongoose from "mongoose";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
 
-    const categoryId = params.id;
+    const { id: categoryId } = await params;
     const { searchParams } = new URL(req.url);
     const subCategoryId = searchParams.get("subCategoryId");
     const type = searchParams.get("type"); // "pdf", "audio", ya "series"

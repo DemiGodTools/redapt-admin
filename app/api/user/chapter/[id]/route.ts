@@ -1,3 +1,7 @@
+import "@/models/Category.model";
+import "@/models/Series.model";
+import "@/models/User.model";
+import "@/models/Question.model";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { Chapter } from "@/models/Chapter.model";
