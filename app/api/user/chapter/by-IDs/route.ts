@@ -1,3 +1,4 @@
+import "@/models/Category.model";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import connectMongo from "@/lib/connectMongo";
