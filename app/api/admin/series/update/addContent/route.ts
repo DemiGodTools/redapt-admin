@@ -111,6 +111,11 @@ export async function POST(req: NextRequest) {
       order: finalOrder,
     });
 
+    // Keep Chapter.series in sync so content no longer appears as standalone
+    if (contentModel === "Chapter") {
+      await Chapter.findByIdAndUpdate(content, { series: seriesDoc._id });
+    }
+
     await seriesDoc.save();
 
     return NextResponse.json(

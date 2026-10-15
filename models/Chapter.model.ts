@@ -23,6 +23,7 @@ const ChapterSchema = new Schema<IChapter>(
     },
     isTrending: { type: Boolean, default: false },
     comments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
+    questions: [{ type: Schema.Types.ObjectId, ref: "Question", default: [] }],
     cover: { type: String, required: true },
     category: {
       type: Schema.Types.ObjectId,

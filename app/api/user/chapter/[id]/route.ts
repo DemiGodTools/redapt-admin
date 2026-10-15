@@ -5,7 +5,7 @@ import "@/models/Question.model";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { Chapter } from "@/models/Chapter.model";
-import { Comment} from "@/models/Comment.model";
+import { Comment } from "@/models/Comment.model";
 import connectMongo from "@/lib/connectMongo";
 
 export async function GET(
@@ -22,12 +22,13 @@ export async function GET(
     if (!Types.ObjectId.isValid(id)) {
       return NextResponse.json(
         { success: false, message: "Invalid chapter id" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     const chapter = await Chapter.findById(id)
       .populate("category")
+      .populate("questions")
       .populate({
         path: "comments",
         populate: {
@@ -35,18 +36,18 @@ export async function GET(
           select: "name userId image profileLevel",
         },
       })
-       .populate({
-    path: "series",
-    populate: {
-      path: "chapters.content",
-    },
-  })
+      .populate({
+        path: "series",
+        populate: {
+          path: "chapters.content",
+        },
+      })
       .lean();
 
     if (!chapter) {
       return NextResponse.json(
         { success: false, message: "Chapter not found" },
-        { status: 404 },
+        { status: 404 }
       );
     }
 
@@ -58,7 +59,7 @@ export async function GET(
     console.error("Get Chapter Error:", err);
     return NextResponse.json(
       { success: false, message: "Server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

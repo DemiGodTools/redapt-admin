@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Types } from "mongoose";
 import connectMongo from "@/lib/connectMongo";
 import { Chapter } from "@/models/Chapter.model";
 import { Series } from "@/models/Series.model";
@@ -6,10 +7,10 @@ import { IChapter } from "@/types/Chapter";
 
 export async function PUT(
   req: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const {id : chapterId} = await params
+    const { id: chapterId } = await params;
     await connectMongo();
     const body = await req.json();
 
@@ -26,11 +27,21 @@ export async function PUT(
       "author",
       "isDownloadable",
       "toc",
+      "questions", // 👈 Chapter-level questions field add ho gaya
     ];
 
     for (const field of fields) {
       if (body[field] !== undefined) {
-        update[field] = body[field];
+        if (field === "questions") {
+          // Convert array of string IDs to ObjectId array safely
+          if (Array.isArray(body.questions)) {
+            update.questions = body.questions
+              .filter((qId: any) => Types.ObjectId.isValid(qId))
+              .map((qId: any) => new Types.ObjectId(String(qId)));
+          }
+        } else {
+          update[field] = body[field];
+        }
       }
     }
 

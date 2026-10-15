@@ -10,13 +10,14 @@ export interface IChapter {
   for: SubscriptionPlan;
   isTrending: boolean;
   comments: Types.ObjectId[];
+  questions?: Types.ObjectId[];
   cover?: string;
   category: Types.ObjectId;
   subCategory?: Types.ObjectId | null;
   series?: Types.ObjectId;
   likes: number;
-  author: string,
-	total: number,
+  author: string;
+  total: number;
   isDownloadable: boolean;
   toc: {
     cut: string;
