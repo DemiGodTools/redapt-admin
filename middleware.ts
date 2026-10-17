@@ -16,7 +16,7 @@ export async function verifyJWT(token: string): Promise<UserJWTPayload | null> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ⚡ Public routes aur Chapter APIs ko bina kisi auth check ke turant bypass karein
+  // ⚡ Public read & Chapter APIs — kisi bhi haal mein 401 nahi aayega
   if (
     pathname.startsWith("/api/user/chapter") ||
     pathname.startsWith("/api/chapter") ||
@@ -100,6 +100,6 @@ export const config = {
     "/admin/:path*",
     "/api/admin/:path*",
     "/user/:path*",
-    "/api/user/:path*",
+    "/api/user/((?!chapter).*)",
   ],
 };
