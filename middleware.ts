@@ -16,7 +16,7 @@ export async function verifyJWT(token: string): Promise<UserJWTPayload | null> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ⚡ Public read & Chapter APIs — inpar 401 block nahi aayega
+  // ⚡ Public routes aur Chapter APIs ko bina kisi auth check ke turant bypass karein
   if (
     pathname.startsWith("/api/user/chapter") ||
     pathname.startsWith("/api/chapter") ||

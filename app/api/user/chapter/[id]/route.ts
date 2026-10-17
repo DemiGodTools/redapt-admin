@@ -30,6 +30,7 @@ export async function GET(
     const _ = Comment;
     const __ = Question;
 
+    // 1. Chapter fetch karein
     const chapter: any = await Chapter.findById(id)
       .populate("category")
       .populate("subCategory")
@@ -55,7 +56,7 @@ export async function GET(
       );
     }
 
-    // ⚡ Direct DB Query: Database se real questions documents bind karein
+    // 2. Direct DB Query: Real questions fetch karke bind karein
     if (Array.isArray(chapter.questions) && chapter.questions.length > 0) {
       const qIds = chapter.questions
         .map((q: any) => (typeof q === "object" && q?._id ? q._id : q))
