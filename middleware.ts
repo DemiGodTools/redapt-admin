@@ -16,36 +16,58 @@ export async function verifyJWT(token: string): Promise<UserJWTPayload | null> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Admin
+  // ⚡ Public read & Chapter APIs — inpar 401 block nahi aayega
+  if (
+    pathname.startsWith("/api/user/chapter") ||
+    pathname.startsWith("/api/chapter") ||
+    pathname.startsWith("/api/admin/chapter") ||
+    pathname.startsWith("/api/admin/question") ||
+    pathname.startsWith("/api/question") ||
+    pathname.startsWith("/api/category")
+  ) {
+    return NextResponse.next();
+  }
+
+  // Admin Protection
   if (
     (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) &&
     !pathname.startsWith("/api/admin/auth") &&
     !pathname.startsWith("/admin/login")
   ) {
-    console.log("Admin middleware triggered for path:", pathname);
     const token = request.cookies.get("adminToken")?.value;
 
     if (!token) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { success: false, message: "Unauthorized admin" },
+          { status: 401 }
+        );
+      }
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
-    const adminPayload = await verifyJWT(token);
 
+    const adminPayload = await verifyJWT(token);
     if (!adminPayload) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { success: false, message: "Invalid admin token" },
+          { status: 401 }
+        );
+      }
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
     return NextResponse.next();
   }
 
-  // User
-
+  // User Protection
   if (
     pathname.startsWith("/api/user") &&
     !pathname.startsWith("/api/user/auth/login") &&
-    !pathname.startsWith("/api/user/payment/confirm")
+    !pathname.startsWith("/api/user/payment/confirm") &&
+    !pathname.startsWith("/api/user/chapter")
   ) {
     let userEmail = "";
 
-    // 1. JWT check
     const authHeader = request.headers.get("Authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
@@ -57,17 +79,10 @@ export async function middleware(request: NextRequest) {
 
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-user-email", userEmail);
-    const internalReqsecret = request.headers.get("x-internal-secret");
-    if (internalReqsecret === process.env.INTERNAL_API_SECRET) {
-      return NextResponse.next({
-        request: { headers: requestHeaders },
-      });
-    }
 
-    // 3. Final decision
     if (!userEmail) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized by middleWare" },
+        { success: false, message: "Unauthorized by middleware" },
         { status: 401 }
       );
     }
@@ -76,6 +91,7 @@ export async function middleware(request: NextRequest) {
       request: { headers: requestHeaders },
     });
   }
+
   return NextResponse.next();
 }
 
