@@ -4,7 +4,11 @@ import { UserJWTPayload } from "@/types/jwt";
 
 export async function verifyJWT(token: string): Promise<UserJWTPayload | null> {
   try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
+    const rawSecret =
+      process.env.JWT_SECRET ||
+      process.env.NEXTAUTH_SECRET ||
+      "readapt_super_secret_jwt_key_12345";
+    const secret = new TextEncoder().encode(rawSecret);
     const { payload } = await jwtVerify<UserJWTPayload>(token, secret);
     if (!payload.userId || !payload.email) return null;
     return payload;

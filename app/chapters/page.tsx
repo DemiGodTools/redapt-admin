@@ -44,6 +44,10 @@ export default function ChaptersAdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Upload States
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
+
   // Form Fields
   const [formTitle, setFormTitle] = useState("");
   const [formDetails, setFormDetails] = useState("");
@@ -82,7 +86,6 @@ export default function ChaptersAdminPage() {
     fetchData();
   }, []);
 
-  // Sub-categories available based on selected category
   const availableSubCategories = useMemo(() => {
     const parent = categories.find((c) => c._id === formCategory);
     return parent?.subCategories || [];
@@ -102,6 +105,8 @@ export default function ChaptersAdminPage() {
     setFormTrending(false);
     setFormDownloadable(true);
     setFormToc([]);
+    setUploadingPdf(false);
+    setUploadingCover(false);
   };
 
   const openCreateModal = () => {
@@ -126,6 +131,48 @@ export default function ChaptersAdminPage() {
     setShowModal(true);
   };
 
+  // ⚡ Device File Upload Handler for PDF & Cover Image
+  const handleFileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: "media" | "cover"
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (type === "media") setUploadingPdf(true);
+    if (type === "cover") setUploadingCover(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.success && data?.url) {
+        if (type === "media") {
+          setFormMedia(data.url);
+          alert(`File "${file.name}" uploaded successfully!`);
+        } else {
+          setFormCover(data.url);
+          alert(`Cover image uploaded successfully!`);
+        }
+      } else {
+        alert(data?.message || "File upload failed");
+      }
+    } catch (err: any) {
+      alert(err?.message || "Error uploading file from device");
+    } finally {
+      if (type === "media") setUploadingPdf(false);
+      if (type === "cover") setUploadingCover(false);
+      e.target.value = "";
+    }
+  };
+
   // TOC Handlers
   const addTocRow = () => {
     setFormToc((prev) => [...prev, { cut: "", title: "" }]);
@@ -143,7 +190,7 @@ export default function ChaptersAdminPage() {
     setFormToc((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Submit Handler
+  // Submit Form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim() || !formMedia.trim() || !formCover.trim() || !formAuthor.trim() || !formCategory) {
@@ -230,7 +277,7 @@ export default function ChaptersAdminPage() {
               Chapter Management Hub
             </h1>
             <p style={{ color: "#9ca3af", margin: "6px 0 0", fontSize: "14px" }}>
-              Create, edit, organize media PDFs/Audios, manage TOCs and subscription tiers.
+              Create, edit, upload media PDFs/Audios from device, manage TOCs and subscription tiers.
             </p>
           </div>
 
@@ -503,37 +550,91 @@ export default function ChaptersAdminPage() {
                   />
                 </div>
 
-                {/* Row 2: Media URL & Cover URL */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
-                      Media File URL (PDF or Audio stream) *
-                    </label>
+                {/* Row 2: Media URL (PDF) + Direct Upload Button */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
+                    Media File (PDF / Audio) *
+                  </label>
+                  <div style={{ display: "flex", gap: "10px" }}>
                     <input
                       type="url"
                       required
-                      placeholder="https://.../book.pdf"
+                      placeholder="https://.../book.pdf or upload from device"
                       value={formMedia}
                       onChange={(e) => setFormMedia(e.target.value)}
-                      style={inputStyle}
+                      style={{ ...inputStyle, flex: 1 }}
                     />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
-                      Cover Image URL *
+                    <label
+                      style={{
+                        backgroundColor: uploadingPdf ? "rgba(255,255,255,0.1)" : "rgba(0, 210, 180, 0.15)",
+                        color: uploadingPdf ? "#9ca3af" : "#00D2B4",
+                        border: "1px solid rgba(0, 210, 180, 0.3)",
+                        padding: "9px 16px",
+                        borderRadius: "6px",
+                        cursor: uploadingPdf ? "not-allowed" : "pointer",
+                        fontSize: "13px",
+                        fontWeight: "600",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {uploadingPdf ? "Uploading PDF..." : "📁 Upload PDF"}
+                      <input
+                        type="file"
+                        accept="application/pdf,audio/*"
+                        disabled={uploadingPdf}
+                        onChange={(e) => handleFileUpload(e, "media")}
+                        style={{ display: "none" }}
+                      />
                     </label>
-                    <input
-                      type="url"
-                      required
-                      placeholder="https://images.unsplash.com/..."
-                      value={formCover}
-                      onChange={(e) => setFormCover(e.target.value)}
-                      style={inputStyle}
-                    />
                   </div>
                 </div>
 
-                {/* Row 3: Category & Subcategory */}
+                {/* Row 3: Cover Image URL + Direct Upload Button */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
+                    Cover Image URL *
+                  </label>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://images.unsplash.com/... or upload"
+                      value={formCover}
+                      onChange={(e) => setFormCover(e.target.value)}
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <label
+                      style={{
+                        backgroundColor: uploadingCover ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.08)",
+                        color: uploadingCover ? "#9ca3af" : "#fff",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        padding: "9px 16px",
+                        borderRadius: "6px",
+                        cursor: uploadingCover ? "not-allowed" : "pointer",
+                        fontSize: "13px",
+                        fontWeight: "600",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {uploadingCover ? "Uploading Cover..." : "🖼️ Upload Cover"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingCover}
+                        onChange={(e) => handleFileUpload(e, "cover")}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Row 4: Category & Subcategory */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
@@ -575,7 +676,7 @@ export default function ChaptersAdminPage() {
                   </div>
                 </div>
 
-                {/* Row 4: Type, Plan, Trending, Downloadable */}
+                {/* Row 5: Type, Plan, Trending, Downloadable */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "12px", alignItems: "center" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "12px", color: "#9ca3af", marginBottom: "4px" }}>
@@ -709,7 +810,7 @@ export default function ChaptersAdminPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={submitting}
+                    disabled={submitting || uploadingPdf || uploadingCover}
                     style={{
                       padding: "10px 24px",
                       backgroundColor: "#00D2B4",
@@ -717,7 +818,7 @@ export default function ChaptersAdminPage() {
                       border: "none",
                       borderRadius: "6px",
                       fontWeight: "bold",
-                      cursor: submitting ? "not-allowed" : "pointer",
+                      cursor: submitting || uploadingPdf || uploadingCover ? "not-allowed" : "pointer",
                       fontSize: "13px",
                     }}
                   >

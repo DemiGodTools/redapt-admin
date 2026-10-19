@@ -1,12 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
+import { jwtVerify } from "jose";
+import { UserJWTPayload } from "@/types/jwt";
 
 export async function POST(req: NextRequest) {
   try {
     await connectMongo();
 
-    const userEmail = req.headers.get("x-user-email");
+    let userEmail = req.headers.get("x-user-email");
+    if (!userEmail) {
+      const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.split(" ")[1];
+        try {
+          const rawSecret =
+            process.env.JWT_SECRET ||
+            process.env.NEXTAUTH_SECRET ||
+            "readapt_super_secret_jwt_key_12345";
+          const secret = new TextEncoder().encode(rawSecret);
+          const { payload } = await jwtVerify<UserJWTPayload>(token, secret);
+          if (payload?.email) {
+            userEmail = payload.email;
+          }
+        } catch (e) {
+          console.warn("Direct JWT verify in route failed:", e);
+        }
+      }
+    }
+
     if (!userEmail) {
       return NextResponse.json(
         { success: false, message: "Unauthorized (no user email)" },
@@ -24,7 +46,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (image.length > 1_800_000) {
+    if (image.length > 3_500_000) {
       return NextResponse.json(
         { success: false, message: "Image is too large" },
         { status: 413 },
