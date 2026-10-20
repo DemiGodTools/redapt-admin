@@ -2,7 +2,6 @@
 import "@/models/Category.model";
 import "@/models/Series.model";
 import "@/models/User.model";
-import "@/models/Thought.model";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import connectMongo from "@/lib/connectMongo";
@@ -32,7 +31,16 @@ export async function GET(
     const _ = Comment;
     const __ = Question;
 
-    // 1. Safe Chapter Fetch: Agar populate fail bhi ho toh fallback raw chapter le aayega (Zero 500 Crash)
+    const chapterObjectId = new Types.ObjectId(id);
+
+    // 1. Raw MongoDB document se questions array pehle hi सुरक्षित nikal lein
+    // taaki Mongoose populate ya cached schema ise kabhi empty na kar sake
+    const rawChapterDoc = await Chapter.collection.findOne(
+      { _id: chapterObjectId },
+      { projection: { questions: 1 } }
+    );
+
+    // 2. Chapter metadata fetch karein (Yahan .populate("questions") NAHI lagana hai)
     let chapter: any = null;
     try {
       chapter = await Chapter.findById(id)
@@ -56,8 +64,7 @@ export async function GET(
           },
         })
         .lean();
-    } catch (populateErr) {
-      console.warn("Populate fallback triggered for chapter:", id, populateErr);
+    } catch {
       chapter = await Chapter.findById(id).lean();
     }
 
@@ -68,65 +75,64 @@ export async function GET(
       );
     }
 
-    // 2. Direct DB Query: Real questions fetch karke bind karein
-    const rawQuestions = Array.isArray(chapter.questions) ? chapter.questions : [];
+    // 3. Raw questions list ko merge karein
+    const rawQuestionsList =
+      Array.isArray(rawChapterDoc?.questions) && rawChapterDoc.questions.length > 0
+        ? rawChapterDoc.questions
+        : Array.isArray(chapter.questions)
+        ? chapter.questions
+        : [];
 
-    if (rawQuestions.length > 0) {
-      // Agar pehle se full question objects hain toh unhe rakh lein, warna ObjectIds extract karein
+    if (rawQuestionsList.length > 0) {
+      const stringIds: string[] = [];
       const objectIds: Types.ObjectId[] = [];
-      const alreadyPopulated: any[] = [];
 
-      for (const item of rawQuestions) {
+      for (const item of rawQuestionsList) {
         if (!item) continue;
-        if (
-          typeof item === "object" &&
-          typeof item.question === "string" &&
-          Array.isArray(item.options)
-        ) {
-          alreadyPopulated.push({
-            ...item,
-            _id: String(item._id),
-            correct: Number(item.correct ?? 0),
-            explanation: item.explanation || "",
-          });
-        } else {
-          const rawId =
-            typeof item === "object" && item !== null
-              ? item._id || item.$oid || item.content || item
-              : item;
-          const idStr = String(rawId).trim();
-          if (Types.ObjectId.isValid(idStr)) {
-            objectIds.push(new Types.ObjectId(idStr));
+        const rawId =
+          typeof item === "object" && item !== null
+            ? item._id || item.$oid || item.id || item
+            : item;
+        const cleanStr = String(rawId).trim();
+        if (cleanStr) {
+          stringIds.push(cleanStr);
+          if (Types.ObjectId.isValid(cleanStr)) {
+            objectIds.push(new Types.ObjectId(cleanStr));
           }
         }
       }
 
-      if (objectIds.length > 0) {
-        const dbQuestions = await Question.find({
-          _id: { $in: objectIds },
-        }).lean();
+      if (stringIds.length > 0) {
+        // Direct MongoDB collection query: matches both ObjectId and String _id
+        const dbQuestions = await Question.collection
+          .find({
+            $or: [
+              ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []),
+              { _id: { $in: stringIds as any } },
+            ],
+          })
+          .toArray();
 
-        // Maintain order and normalize fields for React Native
-        const questionMap = new Map<string, any>();
-        dbQuestions.forEach((q: any) => {
-          questionMap.set(String(q._id), {
+        const qMap = new Map<string, any>();
+        for (const q of dbQuestions) {
+          const qIdStr = String(q._id);
+          qMap.set(qIdStr, {
             ...q,
-            _id: String(q._id),
+            _id: qIdStr,
             question: String(q.question || ""),
             options: Array.isArray(q.options) ? q.options.map(String) : [],
             correct: Number(q.correct ?? 0),
             explanation: q.explanation ? String(q.explanation) : "",
             comments: Array.isArray(q.comments) ? q.comments : [],
           });
-        });
+        }
 
-        const orderedQuestions = objectIds
-          .map((oid) => questionMap.get(String(oid)))
+        // Preserve exact order of questions in chapter
+        chapter.questions = stringIds
+          .map((sid) => qMap.get(sid))
           .filter(Boolean);
-
-        chapter.questions = [...alreadyPopulated, ...orderedQuestions];
       } else {
-        chapter.questions = alreadyPopulated;
+        chapter.questions = [];
       }
     } else {
       chapter.questions = [];
