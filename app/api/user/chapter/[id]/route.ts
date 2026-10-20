@@ -33,14 +33,13 @@ export async function GET(
 
     const chapterObjectId = new Types.ObjectId(id);
 
-    // 1. Raw MongoDB document se questions array pehle hi सुरक्षित nikal lein
-    // taaki Mongoose populate ya cached schema ise kabhi empty na kar sake
+    // 1. Raw MongoDB document se questions array nikal lein
     const rawChapterDoc = await Chapter.collection.findOne(
       { _id: chapterObjectId },
       { projection: { questions: 1 } }
     );
 
-    // 2. Chapter metadata fetch karein (Yahan .populate("questions") NAHI lagana hai)
+    // 2. Chapter metadata fetch karein
     let chapter: any = null;
     try {
       chapter = await Chapter.findById(id)
@@ -86,9 +85,26 @@ export async function GET(
     if (rawQuestionsList.length > 0) {
       const stringIds: string[] = [];
       const objectIds: Types.ObjectId[] = [];
+      const embeddedMap = new Map<string, any>();
 
       for (const item of rawQuestionsList) {
         if (!item) continue;
+        if (typeof item === "object" && (item.question || item.content?.question)) {
+          const qObj = item.content || item;
+          const qId = String(qObj._id || qObj.id || qObj.$oid || "").trim();
+          if (qId) {
+            embeddedMap.set(qId, {
+              ...qObj,
+              _id: qId,
+              question: String(qObj.question || "").trim(),
+              options: Array.isArray(qObj.options) ? qObj.options.map(String) : [],
+              correct: Number(qObj.correct ?? 0),
+              explanation: qObj.explanation ? String(qObj.explanation) : "",
+              comments: Array.isArray(qObj.comments) ? qObj.comments : [],
+            });
+          }
+        }
+
         const rawId =
           typeof item === "object" && item !== null
             ? item._id || item.$oid || item.id || item
@@ -119,17 +135,19 @@ export async function GET(
           qMap.set(qIdStr, {
             ...q,
             _id: qIdStr,
-            question: String(q.question || ""),
+            question: String(q.question || "").trim(),
             options: Array.isArray(q.options) ? q.options.map(String) : [],
             correct: Number(q.correct ?? 0),
             explanation: q.explanation ? String(q.explanation) : "",
             comments: Array.isArray(q.comments) ? q.comments : [],
+            createdAt: q.createdAt ? new Date(q.createdAt).toISOString() : new Date().toISOString(),
+            updatedAt: q.updatedAt ? new Date(q.updatedAt).toISOString() : new Date().toISOString(),
           });
         }
 
         // Preserve exact order of questions in chapter
         chapter.questions = stringIds
-          .map((sid) => qMap.get(sid))
+          .map((sid) => qMap.get(sid) || embeddedMap.get(sid))
           .filter(Boolean);
       } else {
         chapter.questions = [];

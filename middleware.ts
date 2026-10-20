@@ -20,13 +20,15 @@ export async function verifyJWT(token: string): Promise<UserJWTPayload | null> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ⚡ Public read & Chapter APIs — kisi bhi haal mein 401 nahi aayega
+  // ⚡ Public read, Chapter & Question APIs — kisi bhi haal mein 401 nahi aayega
   if (
     pathname.startsWith("/api/user/chapter") ||
     pathname.startsWith("/api/chapter") ||
     pathname.startsWith("/api/admin/chapter") ||
     pathname.startsWith("/api/admin/question") ||
     pathname.startsWith("/api/question") ||
+    pathname.startsWith("/api/user/question/by-chapter") ||
+    pathname.startsWith("/api/user/question/get-comments") ||
     pathname.startsWith("/api/category")
   ) {
     return NextResponse.next();
@@ -68,7 +70,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/user") &&
     !pathname.startsWith("/api/user/auth/login") &&
     !pathname.startsWith("/api/user/payment/confirm") &&
-    !pathname.startsWith("/api/user/chapter")
+    !pathname.startsWith("/api/user/chapter") &&
+    !pathname.startsWith("/api/user/question/by-chapter")
   ) {
     let userEmail = "";
 
@@ -104,6 +107,6 @@ export const config = {
     "/admin/:path*",
     "/api/admin/:path*",
     "/user/:path*",
-    "/api/user/((?!chapter).*)",
+    "/api/user/((?!chapter|question/by-chapter).*)",
   ],
 };
