@@ -4,15 +4,20 @@ import { Payment } from '@/models/Payment.model';
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+export const dynamic = 'force-dynamic';
+
+function getRazorpayClient() {
+  const key_id = process.env.RAZORPAY_KEY_ID || 'dummy_key';
+  const key_secret = process.env.RAZORPAY_KEY_SECRET || 'dummy_secret';
+  return new Razorpay({ key_id, key_secret });
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { amount, planId, user } = body;
+
+    const razorpay = getRazorpayClient();
 
     const paymentLink = await razorpay.paymentLink.create({
       amount: Math.round(Number(amount) * 100),
