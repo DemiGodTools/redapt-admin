@@ -41,7 +41,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    if (secret !== process.env.ADMIN_SECRET) {
+    const userSecret = (secret || "").trim();
+    const expectedSecret = (process.env.ADMIN_SECRET || "").trim().replace(/^["']|["']$/g, "");
+
+    if (!expectedSecret || userSecret !== expectedSecret) {
       return NextResponse.json(
         { message: "Invalid secret key." },
         { status: 403 }
