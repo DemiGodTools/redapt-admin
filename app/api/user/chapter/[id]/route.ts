@@ -2,12 +2,15 @@
 import "@/models/Category.model";
 import "@/models/Series.model";
 import "@/models/User.model";
+import "@/models/Comment.model";
+import "@/models/Question.model";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import connectMongo from "@/lib/connectMongo";
 import { Chapter } from "@/models/Chapter.model";
 import { Comment } from "@/models/Comment.model";
 import { Question } from "@/models/Question.model";
+import { User } from "@/models/User.model";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,24 +25,27 @@ export async function GET(
     const { id } = await params;
 
     if (!Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { success: false, message: "Invalid chapter id" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Invalid chapter id" }, { status: 400 });
     }
 
-    const _ = Comment;
-    const __ = Question;
+    // ⚡ 1. SECURE: Get user's plan via Auth Header
+    const userEmail = req.headers.get("x-user-email");
+    let userPlan = 0;
+    
+    if (userEmail) {
+      const user = await User.findOne({ email: userEmail }).lean();
+      if (user && user.subscription) {
+        userPlan = Number(user.subscription.plan) || 0;
+      }
+    }
 
     const chapterObjectId = new Types.ObjectId(id);
 
-    // 1. Raw MongoDB document se questions array nikal lein
     const rawChapterDoc = await Chapter.collection.findOne(
       { _id: chapterObjectId },
       { projection: { questions: 1 } }
     );
 
-    // 2. Chapter metadata fetch karein
     let chapter: any = null;
     try {
       chapter = await Chapter.findById(id)
@@ -48,19 +54,17 @@ export async function GET(
         .populate({
           path: "comments",
           strictPopulate: false,
-          populate: {
-            path: "by",
-            select: "name userId image profileLevel",
-            strictPopulate: false,
-          },
+          populate: { path: "by", select: "name userId image profileLevel", strictPopulate: false },
+        })
+        .populate({
+          path: "qnaComments",
+          strictPopulate: false,
+          populate: { path: "by", select: "name userId image profileLevel", strictPopulate: false },
         })
         .populate({
           path: "series",
           strictPopulate: false,
-          populate: {
-            path: "chapters.content",
-            strictPopulate: false,
-          },
+          populate: { path: "chapters.content", strictPopulate: false },
         })
         .lean();
     } catch {
@@ -68,19 +72,19 @@ export async function GET(
     }
 
     if (!chapter) {
-      return NextResponse.json(
-        { success: false, message: "Chapter not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, message: "Chapter not found" }, { status: 404 });
     }
 
-    // 3. Raw questions list ko merge karein
-    const rawQuestionsList =
-      Array.isArray(rawChapterDoc?.questions) && rawChapterDoc.questions.length > 0
+    // ⚡ 2. REAL-WORLD SECURITY CHECK: Data hiding
+    const requiredPlan = Number(chapter.for) || 0;
+    if (userPlan < requiredPlan) {
+      // Empty the PDF link so bypassers get nothing
+      chapter.media = ""; 
+    }
+
+    const rawQuestionsList = Array.isArray(rawChapterDoc?.questions) && rawChapterDoc.questions.length > 0
         ? rawChapterDoc.questions
-        : Array.isArray(chapter.questions)
-        ? chapter.questions
-        : [];
+        : Array.isArray(chapter.questions) ? chapter.questions : [];
 
     if (rawQuestionsList.length > 0) {
       const stringIds: string[] = [];
@@ -100,34 +104,22 @@ export async function GET(
               options: Array.isArray(qObj.options) ? qObj.options.map(String) : [],
               correct: Number(qObj.correct ?? 0),
               explanation: qObj.explanation ? String(qObj.explanation) : "",
-              comments: Array.isArray(qObj.comments) ? qObj.comments : [],
             });
           }
         }
 
-        const rawId =
-          typeof item === "object" && item !== null
-            ? item._id || item.$oid || item.id || item
-            : item;
+        const rawId = typeof item === "object" && item !== null ? item._id || item.$oid || item.id || item : item;
         const cleanStr = String(rawId).trim();
         if (cleanStr) {
           stringIds.push(cleanStr);
-          if (Types.ObjectId.isValid(cleanStr)) {
-            objectIds.push(new Types.ObjectId(cleanStr));
-          }
+          if (Types.ObjectId.isValid(cleanStr)) { objectIds.push(new Types.ObjectId(cleanStr)); }
         }
       }
 
       if (stringIds.length > 0) {
-        // Direct MongoDB collection query: matches both ObjectId and String _id
-        const dbQuestions = await Question.collection
-          .find({
-            $or: [
-              ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []),
-              { _id: { $in: stringIds as any } },
-            ],
-          })
-          .toArray();
+        const dbQuestions = await Question.find({
+          $or: [ ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []), { _id: { $in: stringIds as any } } ],
+        }).lean();
 
         const qMap = new Map<string, any>();
         for (const q of dbQuestions) {
@@ -139,16 +131,11 @@ export async function GET(
             options: Array.isArray(q.options) ? q.options.map(String) : [],
             correct: Number(q.correct ?? 0),
             explanation: q.explanation ? String(q.explanation) : "",
-            comments: Array.isArray(q.comments) ? q.comments : [],
             createdAt: q.createdAt ? new Date(q.createdAt).toISOString() : new Date().toISOString(),
             updatedAt: q.updatedAt ? new Date(q.updatedAt).toISOString() : new Date().toISOString(),
           });
         }
-
-        // Preserve exact order of questions in chapter
-        chapter.questions = stringIds
-          .map((sid) => qMap.get(sid) || embeddedMap.get(sid))
-          .filter(Boolean);
+        chapter.questions = stringIds.map((sid) => qMap.get(sid) || embeddedMap.get(sid)).filter(Boolean);
       } else {
         chapter.questions = [];
       }
@@ -157,23 +144,11 @@ export async function GET(
     }
 
     return NextResponse.json(
-      {
-        success: true,
-        data: chapter,
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      }
+      { success: true, data: chapter },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate", Pragma: "no-cache", Expires: "0" } }
     );
   } catch (err: any) {
     console.error("Get Chapter Error:", err);
-    return NextResponse.json(
-      { success: false, message: err?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: err?.message || "Server error" }, { status: 500 });
   }
 }

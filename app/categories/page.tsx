@@ -1,7 +1,8 @@
+// File: app/categories/page.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
+import AdminSidebar from "@/components/AdminSidebar";
 
 interface ICategoryItem {
   _id: string;
@@ -15,10 +16,45 @@ interface ICategoryItem {
 
 const DEFAULT_IMG = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=300&auto=format&fit=crop&q=60";
 
+// Clean SVG Icons
+const Icons = {
+  ChevronDown: ({ open }: { open?: boolean }) => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  ),
+  Plus: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
+  Edit: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
+  Trash: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
+  Search: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>,
+};
+
 export default function CategoriesAdminPage() {
   const [categories, setCategories] = useState<ICategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // ⚡ RBAC Check State for Categories (Dashboard access)
+  const [canEdit, setCanEdit] = useState(false);
+
+  useEffect(() => {
+    // ⚡ Local Storage se role aur permissions nikal kar 'canEdit' set karna
+    const role = localStorage.getItem("adminRole");
+    const accessData = localStorage.getItem("adminAccess");
+    
+    if (role === "master_admin") {
+      setCanEdit(true); 
+    } else if (accessData) {
+      try {
+        const access = JSON.parse(accessData);
+        if (access.categories === "edit" || (!access.categories && access.dashboard === "edit")) { 
+          setCanEdit(true); 
+        }
+      } catch (e) {
+        console.error("Failed to parse access data");
+      }
+    }
+  }, []);
 
   // Form states
   const [name, setName] = useState("");
@@ -157,493 +193,471 @@ export default function CategoriesAdminPage() {
   }, [categories, searchTerm]);
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#0b0f19", color: "#f3f4f6", fontFamily: "sans-serif", padding: "32px 24px" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        {/* Top Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px", flexWrap: "wrap", gap: "16px" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "6px" }}>
-              <h1 style={{ fontSize: "28px", fontWeight: "bold", margin: 0, color: "#fff" }}>
-                Category Manager
-              </h1>
-              <span style={{ fontSize: "12px", background: "rgba(0, 210, 180, 0.15)", color: "#00D2B4", padding: "4px 10px", borderRadius: "12px", fontWeight: "600" }}>
-                {categories.length} Main Categories
-              </span>
+    <AdminSidebar>
+      <div style={{ padding: "32px 24px" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          
+          {/* Top Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px", flexWrap: "wrap", gap: "16px" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "6px" }}>
+                <h1 style={{ fontSize: "28px", fontWeight: 700, margin: 0, color: "#fff", letterSpacing: "-0.02em" }}>
+                  Category Manager
+                </h1>
+                <span style={{ fontSize: "12px", background: "rgba(0, 210, 180, 0.15)", color: "#00D2B4", padding: "4px 10px", borderRadius: "12px", fontWeight: 600 }}>
+                  {categories.length} Main Categories
+                </span>
+              </div>
+              <p style={{ color: "#9ca3af", margin: 0, fontSize: "14px" }}>
+                Organize main book categories and nested sub-categories with media covers.
+              </p>
             </div>
-            <p style={{ color: "#9ca3af", margin: 0, fontSize: "14px" }}>
-              Organize main book categories and nested sub-categories with media covers.
-            </p>
-          </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <Link
-              href="/questions"
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.06)",
-                color: "#e5e7eb",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                borderRadius: "8px",
-                padding: "10px 18px",
-                fontSize: "14px",
-                fontWeight: "600",
-                textDecoration: "none",
-              }}
-            >
-              ← Questions Hub
-            </Link>
-            <button
-              onClick={() => handleOpenCreate()}
-              style={{
-                backgroundColor: "#00D2B4",
-                color: "#000",
-                border: "none",
-                borderRadius: "8px",
-                padding: "10px 20px",
-                fontSize: "14px",
-                fontWeight: "bold",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              + Add Category
-            </button>
-          </div>
-        </div>
-
-        {/* Search Bar */}
-        <div style={{ marginBottom: "24px" }}>
-          <input
-            type="text"
-            placeholder="Search categories or sub-categories..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: "100%",
-              maxWidth: "420px",
-              padding: "11px 16px",
-              borderRadius: "8px",
-              border: "1px solid rgba(255,255,255,0.12)",
-              backgroundColor: "#161d2d",
-              color: "#fff",
-              outline: "none",
-              fontSize: "14px",
-            }}
-          />
-        </div>
-
-        {/* Category List with Expand/Collapse Accordion */}
-        {loading ? (
-          <div style={{ padding: "60px", textAlign: "center", color: "#9ca3af" }}>Loading categories...</div>
-        ) : filteredCategories.length === 0 ? (
-          <div style={{ padding: "60px 20px", textAlign: "center", backgroundColor: "#111827", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <p style={{ color: "#9ca3af", margin: 0 }}>No categories found matching your search.</p>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            {filteredCategories.map((cat) => {
-              const isExpanded = expandedCatId === cat._id || (searchTerm.trim().length > 0 && (cat.subCategories?.length || 0) > 0);
-              const subCount = cat.subCategories?.length || 0;
-
-              return (
-                <div
-                  key={cat._id}
+            {/* ⚡ HIDE CREATE CATEGORY BUTTON IF NOT canEdit */}
+            {canEdit && (
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <button
+                  onClick={() => handleOpenCreate()}
                   style={{
-                    backgroundColor: "#111827",
-                    borderRadius: "12px",
-                    border: isExpanded ? "1px solid rgba(0, 210, 180, 0.4)" : "1px solid rgba(255,255,255,0.08)",
-                    overflow: "hidden",
-                    transition: "border-color 0.2s ease",
+                    backgroundColor: "#00D2B4",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 20px",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
                   }}
                 >
-                  {/* Category Card Header */}
-                  <div
-                    style={{
-                      padding: "16px 20px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      cursor: "pointer",
-                      backgroundColor: isExpanded ? "rgba(0, 210, 180, 0.03)" : "transparent",
-                    }}
-                    onClick={() => toggleExpand(cat._id)}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: 1, minWidth: 0 }}>
-                      <img
-                        src={cat.image || DEFAULT_IMG}
-                        alt={cat.name}
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
-                        }}
-                        style={{
-                          width: "52px",
-                          height: "52px",
-                          borderRadius: "10px",
-                          objectFit: "cover",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          backgroundColor: "#1a2234",
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                          <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "600", color: "#fff" }}>
-                            {cat.name}
-                          </h3>
-                          <span
-                            style={{
-                              fontSize: "11px",
-                              color: subCount > 0 ? "#00D2B4" : "#9ca3af",
-                              backgroundColor: subCount > 0 ? "rgba(0, 210, 180, 0.12)" : "rgba(255,255,255,0.06)",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              fontWeight: "600",
-                            }}
-                          >
-                            {subCount} Sub-categories
-                          </span>
-                        </div>
-                        {cat.description ? (
-                          <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#9ca3af", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "550px" }}>
-                            {cat.description}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Action Buttons & Expand Toggle */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleOpenCreate(cat._id)}
-                        style={{
-                          background: "rgba(0, 210, 180, 0.1)",
-                          color: "#00D2B4",
-                          border: "1px solid rgba(0, 210, 180, 0.25)",
-                          padding: "6px 12px",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          fontWeight: "600",
-                          cursor: "pointer",
-                        }}
-                        title="Add Sub-category under this category"
-                      >
-                        + Add Sub
-                      </button>
-                      <button
-                        onClick={() => handleEdit(cat)}
-                        style={{
-                          background: "rgba(255,255,255,0.06)",
-                          color: "#fff",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          padding: "6px 12px",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(cat._id, cat.name)}
-                        style={{
-                          background: "rgba(239, 68, 68, 0.12)",
-                          color: "#ef4444",
-                          border: "1px solid rgba(239, 68, 68, 0.2)",
-                          padding: "6px 12px",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Delete
-                      </button>
-                      <div
-                        onClick={() => toggleExpand(cat._id)}
-                        style={{
-                          padding: "6px 8px",
-                          color: "#9ca3af",
-                          fontSize: "14px",
-                          cursor: "pointer",
-                          userSelect: "none",
-                        }}
-                      >
-                        {isExpanded ? "▲" : "▼"}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Expanded Sub-categories Panel */}
-                  {isExpanded && (
-                    <div style={{ padding: "16px 20px 20px", borderTop: "1px solid rgba(255,255,255,0.06)", backgroundColor: "#0e1320" }}>
-                      <div style={{ fontSize: "12px", fontWeight: "700", color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>
-                        Sub-Categories inside {cat.name} ({subCount})
-                      </div>
-
-                      {subCount === 0 ? (
-                        <div style={{ padding: "20px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "8px", border: "1px dashed rgba(255,255,255,0.1)" }}>
-                          <p style={{ color: "#9ca3af", fontSize: "13px", margin: "0 0 10px" }}>No sub-categories linked yet.</p>
-                          <button
-                            onClick={() => handleOpenCreate(cat._id)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              color: "#00D2B4",
-                              fontSize: "13px",
-                              fontWeight: "600",
-                              cursor: "pointer",
-                              textDecoration: "underline",
-                            }}
-                          >
-                            + Create first sub-category
-                          </button>
-                        </div>
-                      ) : (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
-                          {cat.subCategories!.map((sub) => (
-                            <div
-                              key={sub._id}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "12px",
-                                padding: "10px 14px",
-                                backgroundColor: "#161d2d",
-                                borderRadius: "8px",
-                                border: "1px solid rgba(255,255,255,0.06)",
-                              }}
-                            >
-                              <img
-                                src={sub.image || DEFAULT_IMG}
-                                alt={sub.name}
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
-                                }}
-                                style={{
-                                  width: "40px",
-                                  height: "40px",
-                                  borderRadius: "6px",
-                                  objectFit: "cover",
-                                  backgroundColor: "#0b0f19",
-                                  flexShrink: 0,
-                                }}
-                              />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: "14px", fontWeight: "600", color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                  {sub.name}
-                                </div>
-                                <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                                  ID: {sub._id.slice(-6)}
-                                </div>
-                              </div>
-                              <div style={{ display: "flex", gap: "6px" }}>
-                                <button
-                                  onClick={() => handleEdit(sub, cat._id)}
-                                  style={{
-                                    background: "rgba(255,255,255,0.06)",
-                                    color: "#e5e7eb",
-                                    border: "none",
-                                    borderRadius: "4px",
-                                    padding: "4px 8px",
-                                    fontSize: "11px",
-                                    cursor: "pointer",
-                                  }}
-                                  title="Edit Subcategory"
-                                >
-                                  ✎
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(sub._id, sub.name)}
-                                  style={{
-                                    background: "rgba(239, 68, 68, 0.15)",
-                                    color: "#ef4444",
-                                    border: "none",
-                                    borderRadius: "4px",
-                                    padding: "4px 8px",
-                                    fontSize: "11px",
-                                    cursor: "pointer",
-                                  }}
-                                  title="Delete Subcategory"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                  <Icons.Plus /> Add Category
+                </button>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Modal: Create / Edit Category */}
-        {showFormModal && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              backgroundColor: "rgba(0,0,0,0.75)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 9999,
-              padding: "20px",
-            }}
-          >
-            <div
-              style={{
-                backgroundColor: "#161d2d",
-                borderRadius: "14px",
-                padding: "24px",
-                width: "100%",
-                maxWidth: "520px",
-                border: "1px solid rgba(255,255,255,0.12)",
-                boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
-              }}
-            >
-              <h2 style={{ fontSize: "18px", fontWeight: "bold", margin: "0 0 18px", color: "#fff" }}>
-                {editingId ? "Edit Category" : parentCategory ? "Create Sub-Category" : "Create Main Category"}
-              </h2>
-
-              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
-                    Parent Category
-                  </label>
-                  <select
-                    value={parentCategory}
-                    onChange={(e) => setParentCategory(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      borderRadius: "8px",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      backgroundColor: "#0b0f19",
-                      color: "#fff",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    <option value="">-- None (This will be a Main Category) --</option>
-                    {categories
-                      .filter((c) => c._id !== editingId)
-                      .map((c) => (
-                        <option key={c._id} value={c._id}>
-                          Main: {c.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
-                    Category Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Science Fiction, Psychology, Anime"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      backgroundColor: "#0b0f19",
-                      color: "#fff",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
-                    Cover Image URL
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash.com/..."
-                    value={image}
-                    onChange={(e) => setImage(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      backgroundColor: "#0b0f19",
-                      color: "#fff",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "13px", color: "#9ca3af", marginBottom: "6px" }}>
-                    Description (Optional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Brief description about this category..."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      backgroundColor: "#0b0f19",
-                      color: "#fff",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
-                  <button
-                    type="button"
-                    onClick={handleResetForm}
-                    style={{
-                      padding: "9px 16px",
-                      backgroundColor: "transparent",
-                      color: "#9ca3af",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      borderRadius: "6px",
-                      cursor: "pointer",
-                      fontSize: "13px",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    style={{
-                      padding: "9px 20px",
-                      backgroundColor: "#00D2B4",
-                      color: "#000",
-                      border: "none",
-                      borderRadius: "6px",
-                      fontWeight: "bold",
-                      cursor: isSubmitting ? "not-allowed" : "pointer",
-                      fontSize: "13px",
-                    }}
-                  >
-                    {isSubmitting ? "Saving..." : editingId ? "Update Category" : "Create Category"}
-                  </button>
-                </div>
-              </form>
+          {/* Search Bar */}
+          <div style={{ marginBottom: "24px" }}>
+            <div style={{ position: "relative", maxWidth: "420px" }}>
+               <div style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#6b7280", pointerEvents: "none", display: "flex" }}>
+                  <Icons.Search />
+               </div>
+               <input
+                 type="text"
+                 placeholder="Search categories or sub-categories..."
+                 value={searchTerm}
+                 onChange={(e) => setSearchTerm(e.target.value)}
+                 style={{
+                   width: "100%",
+                   padding: "11px 16px 11px 40px",
+                   borderRadius: "8px",
+                   border: "1px solid rgba(255,255,255,0.12)",
+                   backgroundColor: "#111827",
+                   color: "#fff",
+                   outline: "none",
+                   fontSize: "14px",
+                 }}
+               />
             </div>
           </div>
-        )}
+
+          {/* Category List with Expand/Collapse Accordion */}
+          {loading ? (
+            <div style={{ padding: "60px", textAlign: "center", color: "#9ca3af" }}>Loading categories...</div>
+          ) : filteredCategories.length === 0 ? (
+            <div style={{ padding: "60px 20px", textAlign: "center", backgroundColor: "#111827", borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <p style={{ color: "#9ca3af", margin: 0 }}>No categories found matching your search.</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {filteredCategories.map((cat) => {
+                const isExpanded = expandedCatId === cat._id || (searchTerm.trim().length > 0 && (cat.subCategories?.length || 0) > 0);
+                const subCount = cat.subCategories?.length || 0;
+
+                return (
+                  <div
+                    key={cat._id}
+                    style={{
+                      backgroundColor: "#111827",
+                      borderRadius: "12px",
+                      border: isExpanded ? "1px solid rgba(0, 210, 180, 0.4)" : "1px solid rgba(255,255,255,0.08)",
+                      overflow: "hidden",
+                      transition: "border-color 0.2s ease",
+                    }}
+                  >
+                    {/* Category Card Header */}
+                    <div
+                      style={{
+                        padding: "16px 20px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        cursor: "pointer",
+                        backgroundColor: isExpanded ? "rgba(0, 210, 180, 0.03)" : "transparent",
+                      }}
+                      onClick={() => toggleExpand(cat._id)}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: 1, minWidth: 0 }}>
+                        <img
+                          src={cat.image || DEFAULT_IMG}
+                          alt={cat.name}
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
+                          }}
+                          style={{
+                            width: "52px",
+                            height: "52px",
+                            borderRadius: "10px",
+                            objectFit: "cover",
+                            border: "1px solid rgba(255,255,255,0.1)",
+                            backgroundColor: "#1a2234",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                            <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 600, color: "#fff" }}>
+                              {cat.name}
+                            </h3>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: subCount > 0 ? "#00D2B4" : "#9ca3af",
+                                backgroundColor: subCount > 0 ? "rgba(0, 210, 180, 0.12)" : "rgba(255,255,255,0.06)",
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {subCount} Sub-categories
+                            </span>
+                          </div>
+                          {cat.description ? (
+                            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#9ca3af", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "550px" }}>
+                              {cat.description}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {/* Action Buttons & Expand Toggle */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }} onClick={(e) => e.stopPropagation()}>
+                         
+                        {/* ⚡ HIDE ADD, EDIT, DELETE IF NOT canEdit */}
+                        {canEdit && (
+                          <div style={{ display: "flex", gap: "8px", marginRight: "12px" }}>
+                            <button
+                              onClick={() => handleOpenCreate(cat._id)}
+                              style={actionBtnStyle}
+                              title="Add Sub-category"
+                            >
+                              <Icons.Plus /> Sub
+                            </button>
+                            <button
+                              onClick={() => handleEdit(cat)}
+                              style={actionBtnStyle}
+                            >
+                              <Icons.Edit />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(cat._id, cat.name)}
+                              style={{ ...actionBtnStyle, backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444" }}
+                            >
+                              <Icons.Trash />
+                            </button>
+                          </div>
+                        )}
+
+                        <div
+                          onClick={() => toggleExpand(cat._id)}
+                          style={{
+                            color: isExpanded ? "#00D2B4" : "#9ca3af",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "6px",
+                            cursor: "pointer",
+                            userSelect: "none",
+                            transition: "color 0.2s"
+                          }}
+                        >
+                          <Icons.ChevronDown open={isExpanded} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded Sub-categories Panel */}
+                    {isExpanded && (
+                      <div style={{ padding: "16px 20px 20px", borderTop: "1px solid rgba(255,255,255,0.06)", backgroundColor: "#0e1320" }}>
+                        <div style={{ fontSize: "12px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>
+                          Sub-Categories inside {cat.name} ({subCount})
+                        </div>
+
+                        {subCount === 0 ? (
+                          <div style={{ padding: "20px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "8px", border: "1px dashed rgba(255,255,255,0.1)" }}>
+                            <p style={{ color: "#9ca3af", fontSize: "13px", margin: "0 0 10px" }}>No sub-categories linked yet.</p>
+                            
+                            {/* ⚡ HIDE CREATE FIRST SUB-CAT IF NOT canEdit */}
+                            {canEdit && (
+                              <button
+                                onClick={() => handleOpenCreate(cat._id)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#00D2B4",
+                                  fontSize: "13px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                  textDecoration: "underline",
+                                }}
+                              >
+                                + Create first sub-category
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
+                            {cat.subCategories!.map((sub) => (
+                              <div
+                                key={sub._id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "12px",
+                                  padding: "10px 14px",
+                                  backgroundColor: "#161d2d",
+                                  borderRadius: "8px",
+                                  border: "1px solid rgba(255,255,255,0.06)",
+                                }}
+                              >
+                                <img
+                                  src={sub.image || DEFAULT_IMG}
+                                  alt={sub.name}
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
+                                  }}
+                                  style={{
+                                    width: "40px",
+                                    height: "40px",
+                                    borderRadius: "6px",
+                                    objectFit: "cover",
+                                    backgroundColor: "#0b0f19",
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: "14px", fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    {sub.name}
+                                  </div>
+                                  <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                                    ID: {sub._id.slice(-6)}
+                                  </div>
+                                </div>
+                                
+                                {/* ⚡ HIDE SUB-CAT EDIT/DELETE IF NOT canEdit */}
+                                {canEdit && (
+                                  <div style={{ display: "flex", gap: "6px" }}>
+                                    <button
+                                      onClick={() => handleEdit(sub, cat._id)}
+                                      style={{
+                                        background: "rgba(255,255,255,0.06)",
+                                        color: "#e5e7eb",
+                                        border: "none",
+                                        borderRadius: "4px",
+                                        padding: "4px 8px",
+                                        fontSize: "11px",
+                                        cursor: "pointer",
+                                      }}
+                                      title="Edit Subcategory"
+                                    >
+                                      <Icons.Edit />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(sub._id, sub.name)}
+                                      style={{
+                                        background: "rgba(239, 68, 68, 0.15)",
+                                        color: "#ef4444",
+                                        border: "none",
+                                        borderRadius: "4px",
+                                        padding: "4px 8px",
+                                        fontSize: "11px",
+                                        cursor: "pointer",
+                                      }}
+                                      title="Delete Subcategory"
+                                    >
+                                      <Icons.Trash />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Modal: Create / Edit Category */}
+          {showFormModal && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(0,0,0,0.75)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+                padding: "20px",
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: "#161d2d",
+                  borderRadius: "14px",
+                  padding: "24px",
+                  width: "100%",
+                  maxWidth: "520px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+                }}
+              >
+                <h2 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 18px", color: "#fff" }}>
+                  {editingId ? "Edit Category" : parentCategory ? "Create Sub-Category" : "Create Main Category"}
+                </h2>
+
+                <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#9ca3af", marginBottom: "6px" }}>
+                      Parent Category
+                    </label>
+                    <select
+                      value={parentCategory}
+                      onChange={(e) => setParentCategory(e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="">-- None (This will be a Main Category) --</option>
+                      {categories
+                        .filter((c) => c._id !== editingId)
+                        .map((c) => (
+                          <option key={c._id} value={c._id}>
+                            Main: {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#9ca3af", marginBottom: "6px" }}>
+                      Category Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Science Fiction, Psychology, Anime"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#9ca3af", marginBottom: "6px" }}>
+                      Cover Image URL
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://images.unsplash.com/..."
+                      value={image}
+                      onChange={(e) => setImage(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#9ca3af", marginBottom: "6px" }}>
+                      Description (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Brief description about this category..."
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={handleResetForm}
+                      style={{
+                        padding: "9px 16px",
+                        backgroundColor: "transparent",
+                        color: "#9ca3af",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      style={{
+                        padding: "9px 20px",
+                        backgroundColor: "#00D2B4",
+                        color: "#000",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontWeight: 700,
+                        cursor: isSubmitting ? "not-allowed" : "pointer",
+                        fontSize: "13px",
+                      }}
+                    >
+                      {isSubmitting ? "Saving..." : editingId ? "Update Category" : "Create Category"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </AdminSidebar>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,255,255,0.12)",
+  backgroundColor: "#0b0f19",
+  color: "#fff",
+  outline: "none",
+  boxSizing: "border-box",
+  fontSize: "13px"
+};
+
+const actionBtnStyle: React.CSSProperties = {
+  padding: "6px 12px",
+  backgroundColor: "rgba(255,255,255,0.07)",
+  color: "#fff",
+  border: "none",
+  borderRadius: "6px",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 600,
+  display: "flex",
+  alignItems: "center",
+  gap: "6px"
+};

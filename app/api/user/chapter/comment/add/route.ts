@@ -1,77 +1,72 @@
+// File: app/api/user/chapter/comment/add/route.ts
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import connectMongo from "@/lib/connectMongo";
-
 import { Comment } from "@/models/Comment.model";
 import { Chapter } from "@/models/Chapter.model";
-import { User } from "@/models/User.model";
-import { AddCommentBody } from "@/types/Body";
+import { getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
 
 export async function POST(req: Request) {
   try {
     await connectMongo();
 
-    const userEmail = req.headers.get("x-user-email");
-    if (!userEmail) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const { user, effectivePlan, isExpired } = await getVerifiedUserAndEntitlement(req);
 
-    const body = (await req.json()) as AddCommentBody;
-    const { chapterId, text } = body;
-
-    if (!chapterId || !text?.trim()) {
-      return NextResponse.json(
-        { success: false, message: "chapterId and text are required" },
-        { status: 400 }
-      );
-    }
-
-    if (!Types.ObjectId.isValid(chapterId)) {
-      return NextResponse.json(
-        { success: false, message: "Invalid chapterId" },
-        { status: 400 }
-      );
-    }
-
-    const user = await User.findOne({ email: userEmail });
     if (!user) {
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 401 });
+    }
+
+    // ⚡ BLOCK FREE & EXPIRED USERS FROM POSTING COMMENTS
+    if (effectivePlan < 1) {
       return NextResponse.json(
-        { success: false, message: "User not found" },
-        { status: 404 }
+        {
+          success: false,
+          message: isExpired
+            ? "Your subscription has expired. Renew to post comments."
+            : "Free tier users cannot post comments. Please upgrade your plan.",
+        },
+        { status: 403 }
       );
+    }
+
+    const body = await req.json();
+    const { chapterId, text, isQna } = body;
+
+    if (!chapterId || !text?.trim() || !Types.ObjectId.isValid(chapterId)) {
+      return NextResponse.json({ success: false, message: "Invalid data" }, { status: 400 });
     }
 
     const chapter = await Chapter.findById(chapterId);
     if (!chapter) {
-      return NextResponse.json(
-        { success: false, message: "Chapter not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, message: "Chapter not found" }, { status: 404 });
     }
 
-    // 1️⃣ Create comment
     const comment = await Comment.create({
       by: user._id,
       text: text.trim(),
     });
 
-    // 2️⃣ Push comment into chapter
-    chapter.comments.push(comment._id);
+    if (isQna) {
+      chapter.qnaComments = chapter.qnaComments || [];
+      chapter.qnaComments.push(comment._id);
+    } else {
+      chapter.comments = chapter.comments || [];
+      chapter.comments.push(comment._id);
+    }
     await chapter.save();
+
+    const populatedComment = await Comment.findById(comment._id).populate(
+      "by",
+      "name userId image profileLevel"
+    );
 
     return NextResponse.json({
       success: true,
       message: "Comment added successfully",
-      comment,
+      data: populatedComment,
     });
   } catch (error) {
     console.error("ADD COMMENT ERROR:", error);
-    return NextResponse.json(
-      { success: false, message: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 });
   }
 }

@@ -81,6 +81,14 @@ export async function POST(req: Request) {
 
     let user = await User.findOne({ email });
 
+if (user && user.subscription?.plan > 0 && user.subscription?.expiresOn) {
+  const expiryMs = new Date(user.subscription.expiresOn).getTime();
+  if (!isNaN(expiryMs) && expiryMs <= Date.now()) {
+    user.subscription.plan = 0;
+    await user.save();
+  }
+}
+
     if (!user) {
       const baseId = email.split("@")[0];
       const cleaned = baseId.replace(/[^a-zA-Z]/g, "");
@@ -95,13 +103,18 @@ export async function POST(req: Request) {
     }
 
     // 3. Issue internal JWT
+    const jwtSecret =
+      process.env.JWT_SECRET ||
+      process.env.NEXTAUTH_SECRET ||
+      "readapt_super_secret_jwt_key_12345";
+
     const token = jwt.sign(
       {
         _id: user._id,
         email: user.email,
-        userId: user.userId,
+        userId: user.userId || user._id?.toString() || "user",
       },
-      process.env.JWT_SECRET as string,
+      jwtSecret.trim(),
       { expiresIn: "30d" }
     );
 

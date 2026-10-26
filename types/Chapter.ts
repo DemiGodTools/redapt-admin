@@ -1,3 +1,4 @@
+// File: types/Chapter.ts
 import { Types } from "mongoose";
 import { MediaType, SubscriptionPlan } from "../enums";
 
@@ -9,7 +10,10 @@ export interface IChapter {
   type: MediaType;
   for: SubscriptionPlan;
   isTrending: boolean;
+  isDownloadable: boolean;
+  isProtected?: boolean;
   comments: Types.ObjectId[];
+  qnaComments?: Types.ObjectId[];
   questions?: Types.ObjectId[];
   cover?: string;
   category: Types.ObjectId;
@@ -18,7 +22,7 @@ export interface IChapter {
   likes: number;
   author: string;
   total: number;
-  isDownloadable: boolean;
+  transcript?: string;
   toc: {
     cut: string;
     title: string;

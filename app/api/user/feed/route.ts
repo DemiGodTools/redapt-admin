@@ -6,26 +6,40 @@ import { Chapter } from "@/models/Chapter.model";
 import "@/models/Category.model";
 import "@/models/Series.model";
 import { Series } from "@/models/Series.model";
+import { Thought } from "@/models/Thought.model";
+import { jwtVerify } from "jose";
 
 export async function GET(req: NextRequest) {
   try {
     await connectMongo();
 
-    const email = req.headers.get("x-user-email");
-
-    const user = await User.findOne({ email }).lean();
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: "User not found" },
-        { status: 404 },
-      );
+    let email = req.headers.get("x-user-email");
+    if (!email) {
+      const authHeader =
+        req.headers.get("authorization") || req.headers.get("Authorization");
+      if (authHeader) {
+        const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+        if (token && token !== "undefined" && token !== "null") {
+          try {
+            const rawSecret =
+              process.env.JWT_SECRET ||
+              process.env.NEXTAUTH_SECRET ||
+              "readapt_super_secret_jwt_key_12345";
+            const secret = new TextEncoder().encode(rawSecret.trim());
+            const { payload } = await jwtVerify(token, secret);
+            email = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
+          } catch {}
+        }
+      }
     }
+
+    const user = email ? await User.findOne({ email }).lean() : null;
 
     let topCategories: Types.ObjectId[] = [];
 
-    if (user.likes?.length) {
+    if (user && Array.isArray((user as any).likes) && (user as any).likes.length) {
       const categoryAgg = await Chapter.aggregate([
-        { $match: { _id: { $in: user.likes } } },
+        { $match: { _id: { $in: (user as any).likes } } },
         {
           $group: {
             _id: "$category",
@@ -83,11 +97,14 @@ export async function GET(req: NextRequest) {
 
     const series = await Series.find({}).lean();
 
+    const userPlan = (user as any)?.subscription?.plan ?? 0;
     const available = await Chapter.find({
-      for: { $lte: user.subscription.plan },
+      for: { $lte: userPlan },
     })
       .sort({ updatedAt: -1 })
       .limit(10);
+
+    const thought = await Thought.findOne({}).sort({ updatedAt: -1 }).lean();
 
     return NextResponse.json({
       success: true,
@@ -95,13 +112,14 @@ export async function GET(req: NextRequest) {
         personalized: personalizedChapters,
         trending: trendingChapters,
         series,
-        available
+        available,
+        thought: thought || null,
       },
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Feed error:", err);
     return NextResponse.json(
-      { success: false, message: "Internal Server Error" },
+      { success: false, message: err?.message || String(err), stack: err?.stack },
       { status: 500 },
     );
   }

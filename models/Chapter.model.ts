@@ -1,3 +1,4 @@
+// File: models/Chapter.model.ts
 import { Schema, model, models } from "mongoose";
 import { MediaType, SubscriptionPlan } from "../enums";
 import { IChapter } from "@/types/Chapter";
@@ -23,6 +24,7 @@ const ChapterSchema = new Schema<IChapter>(
     },
     isTrending: { type: Boolean, default: false },
     comments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
+    qnaComments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
     questions: [{ type: Schema.Types.ObjectId, ref: "Question", default: [] }],
     cover: { type: String, required: true },
     category: {
@@ -46,6 +48,7 @@ const ChapterSchema = new Schema<IChapter>(
     likes: { type: Number, default: 0 },
     author: { type: String, required: true },
     isDownloadable: { type: Boolean, default: true },
+    isProtected: { type: Boolean, default: true }, // ⚡ Screenshot Protection Flag
     toc: [
       {
         _id: false,
@@ -53,6 +56,7 @@ const ChapterSchema = new Schema<IChapter>(
         title: { type: String, required: true },
       },
     ],
+    transcript: { type: String, default: "" },
   },
   { timestamps: true }
 );
