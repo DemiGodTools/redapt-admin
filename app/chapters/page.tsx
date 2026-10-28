@@ -582,7 +582,7 @@ export default function ChaptersAdminPage() {
                   <div>
                     <label style={labelStyle}>Media File (PDF / Audio) *</label>
                     <div style={{ display: "flex", gap: "10px" }}>
-                      <input type="url" required placeholder="https://..." value={formMedia} onChange={(e) => setFormMedia(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+                      <input type="text" required placeholder="https://..." value={formMedia} onChange={(e) => setFormMedia(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
                       <label style={{ ...uploadBtnStyle, backgroundColor: uploadingPdf ? "rgba(255,255,255,0.1)" : "rgba(0, 210, 180, 0.15)", color: uploadingPdf ? "#9ca3af" : "#00D2B4" }}>
                         <Icons.Upload /> {uploadingPdf ? (uploadProgress !== null ? `Uploading ${uploadProgress}%` : "Uploading...") : "Upload Media"}
                         <input type="file" accept="application/pdf,audio/*" disabled={uploadingPdf} onChange={(e) => handleFileUpload(e, "media")} style={{ display: "none" }} />
@@ -593,7 +593,7 @@ export default function ChaptersAdminPage() {
                   <div>
                     <label style={labelStyle}>Cover Image URL *</label>
                     <div style={{ display: "flex", gap: "10px" }}>
-                      <input type="url" required placeholder="https://images.unsplash.com/... or upload" value={formCover} onChange={(e) => setFormCover(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+                      <input type="text" required placeholder="https://images.unsplash.com/... or upload" value={formCover} onChange={(e) => setFormCover(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
                       <label style={{ ...uploadBtnStyle, backgroundColor: uploadingCover ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.08)", color: uploadingCover ? "#9ca3af" : "#fff" }}>
                         <Icons.Upload /> {uploadingCover ? (uploadProgress !== null ? `Uploading ${uploadProgress}%` : "Upload Cover") : "Upload Cover"}
                         <input type="file" accept="image/*" disabled={uploadingCover} onChange={(e) => handleFileUpload(e, "cover")} style={{ display: "none" }} />

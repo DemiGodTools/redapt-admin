@@ -22,9 +22,12 @@ export const b2Client = new S3Client({
  * Returns a clean stream URL for our Private Backblaze B2 bucket
  */
 export function getB2MediaUrl(key: string): string {
-  // Always route through /api/media proxy so private bucket items stream securely
   const cleanKey = key.replace(/^\/+/, "");
-  return `/api/media/${cleanKey}`;
+  const baseUrl = process.env.NEXTAUTH_URL 
+    ? process.env.NEXTAUTH_URL.replace(/\/+$/, "")
+    : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://redapt-admin.vercel.app");
+
+  return `${baseUrl}/api/media/${cleanKey}`;
 }
 
 export const getB2PublicUrl = getB2MediaUrl;
