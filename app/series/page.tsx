@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import AdminSidebar from "@/components/AdminSidebar";
+import { uploadFileSmart } from "@/lib/clientUpload";
 
 interface ISeriesItem {
   _id: string;
@@ -179,6 +180,7 @@ export default function SeriesAdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   // Form Fields
   const [formTitle, setFormTitle] = useState("");
@@ -667,7 +669,7 @@ export default function SeriesAdminPage() {
                     <div style={{ display: "flex", gap: "10px" }}>
                       <input type="url" required placeholder="https://..." value={formCover} onChange={(e) => setFormCover(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
                       <label style={{ ...uploadBtnStyle, backgroundColor: uploadingCover ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.08)", color: uploadingCover ? "#9ca3af" : "#fff" }}>
-                        <Icons.Upload /> {uploadingCover ? "..." : "Upload"}
+                        <Icons.Upload /> {uploadingCover ? (uploadProgress !== null ? `${uploadProgress}%` : "...") : "Upload"}
                         <input type="file" accept="image/*" disabled={uploadingCover} onChange={handleFileUpload} style={{ display: "none" }} />
                       </label>
                     </div>

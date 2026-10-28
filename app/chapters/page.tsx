@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
+import { uploadFileSmart } from "@/lib/clientUpload";
 
 interface ITocItem {
   cut: string;
@@ -204,6 +205,7 @@ export default function ChaptersAdminPage() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingTranscript, setUploadingTranscript] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   // Advanced Tab State for Audio
   const [modalTab, setModalTab] = useState<"toc" | "transcript">("toc");
@@ -337,43 +339,45 @@ export default function ChaptersAdminPage() {
     if (!file) return;
     if (type === "media") setUploadingPdf(true);
     if (type === "cover") setUploadingCover(true);
+    setUploadProgress(0);
     try {
-      const formData = new FormData(); formData.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.success && data?.url) {
-        if (type === "media") { setFormMedia(data.url); alert(`Media uploaded successfully!`); }
-        else { setFormCover(data.url); alert(`Cover uploaded successfully!`); }
-      } else { alert(data?.message || "Upload failed"); }
-    } catch (err) { alert("Error uploading file"); } finally {
+      const url = await uploadFileSmart(file, type === "media" ? "media" : "covers", (pct) => {
+        setUploadProgress(pct);
+      });
+      if (type === "media") {
+        setFormMedia(url);
+        alert(`Media uploaded to Backblaze B2 successfully!`);
+      } else {
+        setFormCover(url);
+        alert(`Cover uploaded to Backblaze B2 successfully!`);
+      }
+    } catch (err: any) {
+      alert(err?.message || "Error uploading file");
+    } finally {
       if (type === "media") setUploadingPdf(false);
       if (type === "cover") setUploadingCover(false);
+      setUploadProgress(null);
       e.target.value = "";
     }
   };
 
-  // ⚡ Transcript File Reader Function
   const handleTranscriptUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setUploadingTranscript(true);
     const reader = new FileReader();
-    
     reader.onload = (event) => {
       const text = event.target?.result as string;
       setFormTranscript(text);
       setUploadingTranscript(false);
-      alert("Transcript loaded successfully! You can review or edit it below.");
+      alert("Transcript loaded successfully!");
     };
-    
     reader.onerror = () => {
       setUploadingTranscript(false);
-      alert("Error reading the file. Please try another .txt or .vtt file.");
+      alert("Error reading the file.");
     };
-
     reader.readAsText(file);
-    e.target.value = ""; 
+    e.target.value = "";
   };
 
   const addTocRow = () => setFormToc((prev) => [...prev, { cut: "", title: "" }]);
@@ -580,7 +584,7 @@ export default function ChaptersAdminPage() {
                     <div style={{ display: "flex", gap: "10px" }}>
                       <input type="url" required placeholder="https://..." value={formMedia} onChange={(e) => setFormMedia(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
                       <label style={{ ...uploadBtnStyle, backgroundColor: uploadingPdf ? "rgba(255,255,255,0.1)" : "rgba(0, 210, 180, 0.15)", color: uploadingPdf ? "#9ca3af" : "#00D2B4" }}>
-                        <Icons.Upload /> {uploadingPdf ? "Uploading..." : "Upload Media"}
+                        <Icons.Upload /> {uploadingPdf ? (uploadProgress !== null ? `Uploading ${uploadProgress}%` : "Uploading...") : "Upload Media"}
                         <input type="file" accept="application/pdf,audio/*" disabled={uploadingPdf} onChange={(e) => handleFileUpload(e, "media")} style={{ display: "none" }} />
                       </label>
                     </div>
@@ -591,7 +595,7 @@ export default function ChaptersAdminPage() {
                     <div style={{ display: "flex", gap: "10px" }}>
                       <input type="url" required placeholder="https://images.unsplash.com/... or upload" value={formCover} onChange={(e) => setFormCover(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
                       <label style={{ ...uploadBtnStyle, backgroundColor: uploadingCover ? "rgba(255,255,255,0.1)" : "rgba(255, 255, 255, 0.08)", color: uploadingCover ? "#9ca3af" : "#fff" }}>
-                        <Icons.Upload /> {uploadingCover ? "Uploading..." : "Upload Cover"}
+                        <Icons.Upload /> {uploadingCover ? (uploadProgress !== null ? `Uploading ${uploadProgress}%` : "Upload Cover") : "Upload Cover"}
                         <input type="file" accept="image/*" disabled={uploadingCover} onChange={(e) => handleFileUpload(e, "cover")} style={{ display: "none" }} />
                       </label>
                     </div>

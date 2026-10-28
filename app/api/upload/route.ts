@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { utapi } from "@/app/api/uploadthing/core";
+import { uploadBufferToB2 } from "@/lib/b2";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
+    const folder = (formData.get("folder") as string) || "media";
 
     if (!file) {
       return NextResponse.json(
@@ -15,24 +16,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ⚡ UploadThing UTApi ke zariye direct cloud upload
-    const response = await utapi.uploadFiles(file);
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    if (response?.error) {
-      return NextResponse.json(
-        { success: false, message: response.error.message || "Upload failed" },
-        { status: 500 }
-      );
-    }
-
-    const publicUrl = response?.data?.ufsUrl || response?.data?.url;
-
-    if (!publicUrl) {
-      return NextResponse.json(
-        { success: false, message: "Failed to retrieve uploaded file URL" },
-        { status: 500 }
-      );
-    }
+    const publicUrl = await uploadBufferToB2(
+      buffer,
+      file.name,
+      file.type || "application/octet-stream",
+      folder
+    );
 
     return NextResponse.json({
       success: true,
@@ -41,7 +33,7 @@ export async function POST(req: NextRequest) {
       size: file.size,
     });
   } catch (error: any) {
-    console.error("Direct Upload API Error:", error);
+    console.error("Backblaze B2 Upload Error:", error);
     return NextResponse.json(
       { success: false, message: error?.message || "Internal upload error" },
       { status: 500 }
