@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
+import { uploadFileSmart } from "@/lib/clientUpload";
 
 interface ICategoryItem {
   _id: string;
@@ -14,7 +15,7 @@ interface ICategoryItem {
   order?: number;
 }
 
-const DEFAULT_IMG = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=300&auto=format&fit=crop&q=60";
+const DEFAULT_IMG = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=500&auto=format&fit=crop&q=60";
 
 // Clean SVG Icons
 const Icons = {
@@ -27,6 +28,7 @@ const Icons = {
   Edit: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
   Trash: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
   Search: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>,
+  Upload: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>,
 };
 
 export default function CategoriesAdminPage() {
@@ -34,11 +36,10 @@ export default function CategoriesAdminPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // ⚡ RBAC Check State for Categories (Dashboard access)
+  // RBAC Check State for Categories
   const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
-    // ⚡ Local Storage se role aur permissions nikal kar 'canEdit' set karna
     const role = localStorage.getItem("adminRole");
     const accessData = localStorage.getItem("adminAccess");
     
@@ -63,6 +64,10 @@ export default function CategoriesAdminPage() {
   const [parentCategory, setParentCategory] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
+
+  // Upload states with real-time percentage
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   // Accordion & Search State
   const [expandedCatId, setExpandedCatId] = useState<string | null>(null);
@@ -93,7 +98,27 @@ export default function CategoriesAdminPage() {
     setDescription("");
     setParentCategory("");
     setEditingId(null);
+    setUploadingImage(false);
+    setUploadProgress(null);
     setShowFormModal(false);
+  };
+
+  // Upload handler with Backblaze B2 smart uploader
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    setUploadProgress(0);
+    try {
+      const url = await uploadFileSmart(file, "categories", (pct) => setUploadProgress(pct));
+      setImage(url);
+    } catch (err: any) {
+      alert(err?.message || "Error uploading category image");
+    } finally {
+      setUploadingImage(false);
+      setUploadProgress(null);
+      e.target.value = "";
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -209,11 +234,10 @@ export default function CategoriesAdminPage() {
                 </span>
               </div>
               <p style={{ color: "#9ca3af", margin: 0, fontSize: "14px" }}>
-                Organize main book categories and nested sub-categories with media covers.
+                Organize main book categories and nested sub-categories with 16:9 media covers.
               </p>
             </div>
 
-            {/* ⚡ HIDE CREATE CATEGORY BUTTON IF NOT canEdit */}
             {canEdit && (
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <button
@@ -300,22 +324,30 @@ export default function CategoriesAdminPage() {
                       onClick={() => toggleExpand(cat._id)}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: 1, minWidth: 0 }}>
-                        <img
-                          src={cat.image || DEFAULT_IMG}
-                          alt={cat.name}
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
-                          }}
+                        <div
                           style={{
-                            width: "52px",
-                            height: "52px",
-                            borderRadius: "10px",
-                            objectFit: "cover",
-                            border: "1px solid rgba(255,255,255,0.1)",
+                            width: "72px",
+                            aspectRatio: "16 / 9",
+                            borderRadius: "8px",
+                            overflow: "hidden",
+                            border: "1px solid rgba(255,255,255,0.12)",
                             backgroundColor: "#1a2234",
                             flexShrink: 0,
                           }}
-                        />
+                        >
+                          <img
+                            src={cat.image || DEFAULT_IMG}
+                            alt={cat.name}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
+                            }}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        </div>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                             <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 600, color: "#fff" }}>
@@ -344,8 +376,6 @@ export default function CategoriesAdminPage() {
 
                       {/* Action Buttons & Expand Toggle */}
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }} onClick={(e) => e.stopPropagation()}>
-                         
-                        {/* ⚡ HIDE ADD, EDIT, DELETE IF NOT canEdit */}
                         {canEdit && (
                           <div style={{ display: "flex", gap: "8px", marginRight: "12px" }}>
                             <button
@@ -388,18 +418,21 @@ export default function CategoriesAdminPage() {
                       </div>
                     </div>
 
-                    {/* Expanded Sub-categories Panel */}
+                    {/* Expanded Sub-categories Panel with 16:9 Aspect Ratio Grid */}
                     {isExpanded && (
-                      <div style={{ padding: "16px 20px 20px", borderTop: "1px solid rgba(255,255,255,0.06)", backgroundColor: "#0e1320" }}>
-                        <div style={{ fontSize: "12px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "12px" }}>
-                          Sub-Categories inside {cat.name} ({subCount})
+                      <div style={{ padding: "18px 20px 22px", borderTop: "1px solid rgba(255,255,255,0.06)", backgroundColor: "#0c111d" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.8px" }}>
+                            Sub-Categories inside {cat.name} ({subCount})
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#6b7280" }}>
+                            Display Ratio: 16:9 Aspect
+                          </span>
                         </div>
 
                         {subCount === 0 ? (
-                          <div style={{ padding: "20px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "8px", border: "1px dashed rgba(255,255,255,0.1)" }}>
+                          <div style={{ padding: "28px 20px", textAlign: "center", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "10px", border: "1px dashed rgba(255,255,255,0.1)" }}>
                             <p style={{ color: "#9ca3af", fontSize: "13px", margin: "0 0 10px" }}>No sub-categories linked yet.</p>
-                            
-                            {/* ⚡ HIDE CREATE FIRST SUB-CAT IF NOT canEdit */}
                             {canEdit && (
                               <button
                                 onClick={() => handleOpenCreate(cat._id)}
@@ -418,79 +451,115 @@ export default function CategoriesAdminPage() {
                             )}
                           </div>
                         ) : (
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "16px" }}>
                             {cat.subCategories!.map((sub) => (
                               <div
                                 key={sub._id}
                                 style={{
+                                  backgroundColor: "#151c2c",
+                                  borderRadius: "10px",
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                  overflow: "hidden",
                                   display: "flex",
-                                  alignItems: "center",
-                                  gap: "12px",
-                                  padding: "10px 14px",
-                                  backgroundColor: "#161d2d",
-                                  borderRadius: "8px",
-                                  border: "1px solid rgba(255,255,255,0.06)",
+                                  flexDirection: "column",
+                                  boxShadow: "0 6px 16px rgba(0,0,0,0.3)",
+                                  transition: "transform 0.2s ease, border-color 0.2s ease",
                                 }}
                               >
-                                <img
-                                  src={sub.image || DEFAULT_IMG}
-                                  alt={sub.name}
-                                  onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
-                                  }}
+                                {/* 16:9 Image Container */}
+                                <div
                                   style={{
-                                    width: "40px",
-                                    height: "40px",
-                                    borderRadius: "6px",
-                                    objectFit: "cover",
+                                    width: "100%",
+                                    aspectRatio: "16 / 9",
+                                    overflow: "hidden",
+                                    position: "relative",
                                     backgroundColor: "#0b0f19",
-                                    flexShrink: 0,
+                                    borderBottom: "1px solid rgba(255,255,255,0.06)",
                                   }}
-                                />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: "14px", fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {sub.name}
-                                  </div>
-                                  <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                                    ID: {sub._id.slice(-6)}
-                                  </div>
+                                >
+                                  <img
+                                    src={sub.image || DEFAULT_IMG}
+                                    alt={sub.name}
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
+                                    }}
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                      display: "block",
+                                    }}
+                                  />
+                                  <span
+                                    style={{
+                                      position: "absolute",
+                                      bottom: "6px",
+                                      right: "8px",
+                                      backgroundColor: "rgba(0,0,0,0.7)",
+                                      backdropFilter: "blur(4px)",
+                                      color: "#9ca3af",
+                                      fontSize: "10px",
+                                      fontWeight: 700,
+                                      padding: "2px 6px",
+                                      borderRadius: "4px",
+                                    }}
+                                  >
+                                    16:9
+                                  </span>
                                 </div>
-                                
-                                {/* ⚡ HIDE SUB-CAT EDIT/DELETE IF NOT canEdit */}
-                                {canEdit && (
-                                  <div style={{ display: "flex", gap: "6px" }}>
-                                    <button
-                                      onClick={() => handleEdit(sub, cat._id)}
-                                      style={{
-                                        background: "rgba(255,255,255,0.06)",
-                                        color: "#e5e7eb",
-                                        border: "none",
-                                        borderRadius: "4px",
-                                        padding: "4px 8px",
-                                        fontSize: "11px",
-                                        cursor: "pointer",
-                                      }}
-                                      title="Edit Subcategory"
-                                    >
-                                      <Icons.Edit />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDelete(sub._id, sub.name)}
-                                      style={{
-                                        background: "rgba(239, 68, 68, 0.15)",
-                                        color: "#ef4444",
-                                        border: "none",
-                                        borderRadius: "4px",
-                                        padding: "4px 8px",
-                                        fontSize: "11px",
-                                        cursor: "pointer",
-                                      }}
-                                      title="Delete Subcategory"
-                                    >
-                                      <Icons.Trash />
-                                    </button>
+
+                                {/* Card Body */}
+                                <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between", gap: "10px" }}>
+                                  <div>
+                                    <div style={{ fontSize: "14px", fontWeight: 700, color: "#fff", marginBottom: "4px", lineHeight: "1.3" }}>
+                                      {sub.name}
+                                    </div>
+                                    <div style={{ fontSize: "11px", color: "#6b7280" }}>
+                                      ID: {sub._id.slice(-6)}
+                                    </div>
                                   </div>
-                                )}
+
+                                  {canEdit && (
+                                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", paddingTop: "8px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                                      <button
+                                        onClick={() => handleEdit(sub, cat._id)}
+                                        style={{
+                                          background: "rgba(255,255,255,0.06)",
+                                          color: "#e5e7eb",
+                                          border: "none",
+                                          borderRadius: "6px",
+                                          padding: "5px 10px",
+                                          fontSize: "12px",
+                                          cursor: "pointer",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                        title="Edit Subcategory"
+                                      >
+                                        <Icons.Edit /> Edit
+                                      </button>
+                                      <button
+                                        onClick={() => handleDelete(sub._id, sub.name)}
+                                        style={{
+                                          background: "rgba(239, 68, 68, 0.15)",
+                                          color: "#ef4444",
+                                          border: "none",
+                                          borderRadius: "6px",
+                                          padding: "5px 10px",
+                                          fontSize: "12px",
+                                          cursor: "pointer",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                        title="Delete Subcategory"
+                                      >
+                                        <Icons.Trash /> Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -503,13 +572,13 @@ export default function CategoriesAdminPage() {
             </div>
           )}
 
-          {/* Modal: Create / Edit Category */}
+          {/* Modal: Create / Edit Category with Backblaze Upload & 16:9 Preview */}
           {showFormModal && (
             <div
               style={{
                 position: "fixed",
                 inset: 0,
-                backgroundColor: "rgba(0,0,0,0.75)",
+                backgroundColor: "rgba(0,0,0,0.8)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -523,13 +592,15 @@ export default function CategoriesAdminPage() {
                   borderRadius: "14px",
                   padding: "24px",
                   width: "100%",
-                  maxWidth: "520px",
+                  maxWidth: "540px",
+                  maxHeight: "90vh",
+                  overflowY: "auto",
                   border: "1px solid rgba(255,255,255,0.12)",
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+                  boxShadow: "0 24px 48px rgba(0,0,0,0.6)",
                 }}
               >
                 <h2 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 18px", color: "#fff" }}>
-                  {editingId ? "Edit Category" : parentCategory ? "Create Sub-Category" : "Create Main Category"}
+                  {editingId ? "Edit Category" : parentCategory ? "Create Sub-Category (16:9)" : "Create Main Category"}
                 </h2>
 
                 <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -567,17 +638,89 @@ export default function CategoriesAdminPage() {
                     />
                   </div>
 
+                  {/* Cover Image Input with Backblaze B2 Upload Button & Live 16:9 Preview */}
                   <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#9ca3af", marginBottom: "6px" }}>
-                      Cover Image URL
-                    </label>
-                    <input
-                      type="url"
-                      placeholder="https://images.unsplash.com/..."
-                      value={image}
-                      onChange={(e) => setImage(e.target.value)}
-                      style={inputStyle}
-                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#9ca3af" }}>
+                        Cover Image (16:9 Aspect Ratio)
+                      </label>
+                      <span style={{ fontSize: "11px", color: "#00D2B4", fontWeight: 600 }}>
+                        16:9 Recommended
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <input
+                        type="text"
+                        placeholder="https://... or click Upload"
+                        value={image}
+                        onChange={(e) => setImage(e.target.value)}
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      <label
+                        style={{
+                          border: "1px solid rgba(0, 210, 180, 0.35)",
+                          backgroundColor: uploadingImage ? "rgba(255,255,255,0.1)" : "rgba(0, 210, 180, 0.15)",
+                          color: uploadingImage ? "#9ca3af" : "#00D2B4",
+                          padding: "9px 15px",
+                          borderRadius: "8px",
+                          cursor: uploadingImage ? "not-allowed" : "pointer",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          whiteSpace: "nowrap",
+                          userSelect: "none",
+                          transition: "all 0.2s",
+                        }}
+                      >
+                        <Icons.Upload />
+                        {uploadingImage
+                          ? (uploadProgress !== null ? `Uploading ${uploadProgress}%` : "Uploading...")
+                          : "Upload Image"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={uploadingImage}
+                          onChange={handleFileUpload}
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Live 16:9 Preview Banner in Form */}
+                    {image.trim() ? (
+                      <div style={{ marginTop: "12px" }}>
+                        <div style={{ fontSize: "11px", color: "#9ca3af", marginBottom: "4px" }}>
+                          16:9 Preview:
+                        </div>
+                        <div
+                          style={{
+                            width: "100%",
+                            aspectRatio: "16 / 9",
+                            maxHeight: "150px",
+                            borderRadius: "8px",
+                            overflow: "hidden",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            backgroundColor: "#0b0f19",
+                          }}
+                        >
+                          <img
+                            src={image}
+                            alt="16:9 Cover Preview"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = DEFAULT_IMG;
+                            }}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div>
@@ -593,7 +736,7 @@ export default function CategoriesAdminPage() {
                     />
                   </div>
 
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
                     <button
                       type="button"
                       onClick={handleResetForm}
@@ -611,7 +754,7 @@ export default function CategoriesAdminPage() {
                     </button>
                     <button
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || uploadingImage}
                       style={{
                         padding: "9px 20px",
                         backgroundColor: "#00D2B4",
@@ -619,8 +762,9 @@ export default function CategoriesAdminPage() {
                         border: "none",
                         borderRadius: "6px",
                         fontWeight: 700,
-                        cursor: isSubmitting ? "not-allowed" : "pointer",
+                        cursor: (isSubmitting || uploadingImage) ? "not-allowed" : "pointer",
                         fontSize: "13px",
+                        opacity: (isSubmitting || uploadingImage) ? 0.7 : 1,
                       }}
                     >
                       {isSubmitting ? "Saving..." : editingId ? "Update Category" : "Create Category"}
