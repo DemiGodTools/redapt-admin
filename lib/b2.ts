@@ -1,10 +1,10 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const rawEndpoint = process.env.B2_ENDPOINT || "s3.us-east-005.backblazeb2.com";
+const rawEndpoint = process.env.B2_ENDPOINT || "s3.eu-central-003.backblazeb2.com";
 const cleanEndpoint = rawEndpoint.replace(/^https?:\/\//, "").trim();
 
-// Extract region from endpoint (e.g. "s3.us-east-005.backblazeb2.com" -> "us-east-005")
-const defaultRegion = cleanEndpoint.split(".")[1] || "us-east-005";
+const defaultRegion = cleanEndpoint.split(".")[1] || "eu-central-003";
 const region = process.env.B2_REGION || defaultRegion;
 
 export const B2_BUCKET = process.env.B2_BUCKET_NAME || "readapt-media";
@@ -13,32 +13,43 @@ export const b2Client = new S3Client({
   endpoint: `https://${cleanEndpoint}`,
   region: region,
   credentials: {
-    accessKeyId: process.env.B2_KEY_ID || "",
-    secretAccessKey: process.env.B2_APPLICATION_KEY || "",
+    accessKeyId: process.env.B2_KEY_ID || "003db1d5046e5660000000002",
+    secretAccessKey: process.env.B2_APPLICATION_KEY || "K0037vNP5RopCBmn73pjNtu9YzzO14Q",
   },
 });
 
 /**
- * Returns the public direct HTTPS URL for a file stored in Backblaze B2
+ * Returns a clean stream URL for our Private Backblaze B2 bucket
  */
-export function getB2PublicUrl(key: string): string {
-  if (process.env.B2_DOWNLOAD_URL) {
-    const base = process.env.B2_DOWNLOAD_URL.replace(/\/+$/, "");
-    return `${base}/file/${B2_BUCKET}/${key}`;
-  }
-  // S3-compatible virtual-host or standard path URL
-  return `https://${B2_BUCKET}.${cleanEndpoint}/${key}`;
+export function getB2MediaUrl(key: string): string {
+  // Always route through /api/media proxy so private bucket items stream securely
+  const cleanKey = key.replace(/^\/+/, "");
+  return `/api/media/${cleanKey}`;
+}
+
+export const getB2PublicUrl = getB2MediaUrl;
+
+/**
+ * Generates an on-the-fly secure presigned download/stream URL for a key
+ */
+export async function getB2SignedDownloadUrl(key: string, expiresInSeconds: number = 3600): Promise<string> {
+  const cleanKey = key.replace(/^\/+/, "");
+  const cmd = new GetObjectCommand({
+    Bucket: B2_BUCKET,
+    Key: cleanKey,
+  });
+  return await getSignedUrl(b2Client, cmd, { expiresIn: expiresInSeconds });
 }
 
 /**
- * Upload Buffer directly to Backblaze B2 bucket
+ * Upload Buffer directly to Backblaze B2 private bucket
  */
 export async function uploadBufferToB2(
   buffer: Buffer | Uint8Array,
   fileName: string,
   contentType: string,
   folder: string = "media"
-): Promise<string> {
+): Promise<{ url: string; key: string }> {
   const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
   const key = `${folder}/${Date.now()}-${sanitizedName}`;
 
@@ -51,6 +62,8 @@ export async function uploadBufferToB2(
     })
   );
 
-  return getB2PublicUrl(key);
+  return {
+    url: getB2MediaUrl(key),
+    key,
+  };
 }
-

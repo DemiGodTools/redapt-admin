@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const publicUrl = await uploadBufferToB2(
+    const result = await uploadBufferToB2(
       buffer,
       file.name,
       file.type || "application/octet-stream",
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: result.url,
+      key: result.key,
       name: file.name,
       size: file.size,
     });
