@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { getFirstAllowedRoute } from "@/lib/rbac";
 
 // Clean SVG Icons
 const Icons = {
@@ -61,7 +62,8 @@ export default function AdminLoginPage() {
              localStorage.setItem("adminAccess", JSON.stringify(data.access));
         }
 
-        setTimeout(() => router.push("/chapters"), 1500);
+        const targetRoute = getFirstAllowedRoute(data.role, data.access);
+        setTimeout(() => router.push(targetRoute), 1000);
       } else {
         setError(data.message || "Invalid credentials.");
       }

@@ -23,6 +23,7 @@ export interface IChapter {
   author: string;
   total: number;
   transcript?: string;
+  lyrics?: string;
   toc: {
     cut: string;
     title: string;

@@ -1,3 +1,4 @@
+import { logActivity } from "@/lib/activityLogger";
 import { NextRequest, NextResponse } from "next/server";
 import { Types } from "mongoose";
 import connectMongo from "@/lib/connectMongo";
@@ -54,6 +55,18 @@ export async function POST(req: NextRequest) {
       chapters: [],
       joinedBy: [],
     });
+
+    const adminRole = req.headers.get("x-admin-role") || "admin";
+    const adminName = req.headers.get("x-admin-name") || "Admin";
+    await logActivity({
+      action: "SERIES_ADDED",
+      category: "content",
+      title: newSeries.title,
+      description: `Created new ${type === "framework" ? "Framework" : "Normal"} Series`,
+      performedBy: adminName,
+      performedByRole: adminRole,
+      metadata: { seriesId: newSeries._id.toString(), type },
+    }).catch(() => {});
 
     return NextResponse.json(
       { success: true, message: "Series created successfully!", data: newSeries },

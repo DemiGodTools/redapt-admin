@@ -1,3 +1,4 @@
+import { logActivity } from "@/lib/activityLogger";
 import { NextResponse } from "next/server";
 import { Question } from "@/models/Question.model";
 import { CreateQuestionBody } from "@/types/Body";
@@ -42,6 +43,18 @@ export async function POST(req: Request) {
       correct,
       explanation,
     });
+
+    const adminRole = req.headers.get("x-admin-role") || "admin";
+    const adminName = req.headers.get("x-admin-name") || "Master Admin";
+    await logActivity({
+      action: "QUESTION_ADDED",
+      category: "qna",
+      title: question.slice(0, 70) + (question.length > 70 ? "..." : ""),
+      description: "Question added to interactive quiz bank",
+      performedBy: adminName,
+      performedByRole: adminRole,
+      metadata: { questionId: questionDoc._id.toString() },
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

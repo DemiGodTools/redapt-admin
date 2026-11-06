@@ -1,0 +1,148 @@
+================================================================================
+GOOGLE PLAY DATA SAFETY QUESTIONNAIRE GUIDE & TERMS OF SERVICE FOR READAPT
+Last Updated: October 29, 2026
+Application: Readapt (Android App)
+================================================================================
+
+--------------------------------------------------------------------------------
+PART 1: GOOGLE PLAY CONSOLE - DATA SAFETY FORM ANSWERS
+--------------------------------------------------------------------------------
+When filling out the "Data safety" section in Google Play Console (App content > Data safety), 
+follow these EXACT answers to guarantee 100% policy compliance and zero rejection risk:
+
+1. DATA COLLECTION AND SECURITY:
+   * Does your app collect or share any of the required user data types?
+     -> Answer: YES
+   * Is all of the user data collected by your app encrypted in transit?
+     -> Answer: YES (All traffic runs over HTTPS/TLS)
+   * Do you provide a way for users to request that their data be deleted?
+     -> Answer: YES
+   * Does your app provide an account deletion URL?
+     -> Provide URL: https://redapt-admin.vercel.app/delete-account
+
+2. DATA TYPES COLLECTED & PURPOSE:
+
+   [A] Personal Info:
+   * Name:
+     - Collected? YES
+     - Shared? NO
+     - Is it processed ephemerally? NO
+     - Is this data required or optional? REQUIRED (for user profile & account identification)
+     - Why is this collected? "App functionality" & "Account management"
+   * Email address:
+     - Collected? YES
+     - Shared? NO
+     - Is it processed ephemerally? NO
+     - Is this data required or optional? REQUIRED (for sign-in & authentication)
+     - Why is this collected? "App functionality" & "Account management"
+   * User IDs (Account ID):
+     - Collected? YES
+     - Shared? NO
+     - Why is this collected? "App functionality" & "Account management"
+
+   [B] Financial Info:
+   * Credit card, debit card, bank account numbers, purchase history:
+     - Collected? NO
+     - Shared? NO
+     *(IMPORTANT: During this Early Access phase, no financial info is handled. When Google Play In-App Billing is integrated in the future, Google Play handles billing natively).*
+
+   [C] Location:
+   * Approximate or Precise Location:
+     - Collected? NO
+     - Shared? NO
+
+   [D] Health and Fitness:
+   * Collected? NO
+
+   [E] Messages / SMS:
+   * Collected? NO
+
+   [F] Photos and Videos:
+   * Collected? NO
+
+   [G] Audio Files:
+   * Collected? NO (Streaming audio narration is downloaded/cached from servers, user voice is NOT recorded)
+
+   [H] Files and Docs:
+   * Collected? NO
+
+   [I] App Activity:
+   * App interactions (Reading progress, bookmarks, quiz responses):
+     - Collected? YES
+     - Shared? NO
+     - Why is this collected? "App functionality" (saving progress and syncing reading state)
+   * In-app search history:
+     - Collected? NO (Processed locally or ephemeral)
+
+   [J] App Info and Performance:
+   * Crash logs & Diagnostics:
+     - Collected? YES (Standard diagnostic logging)
+     - Shared? NO
+     - Why is this collected? "Analytics" & "Developer communications / Bug fixes"
+
+   [K] Device or other IDs:
+   * Device or other IDs (Anonymous installation ID / push token):
+     - Collected? YES
+     - Shared? NO
+     - Why is this collected? "App functionality" (delivering notifications / device session management)
+
+--------------------------------------------------------------------------------
+PART 2: TERMS OF SERVICE (TERMS AND CONDITIONS)
+--------------------------------------------------------------------------------
+
+1. ACCEPTANCE OF TERMS
+By downloading, accessing, or using the Readapt mobile application ("App"), you agree 
+to be bound by these Terms of Service ("Terms"). If you disagree with any part of 
+these terms, you must not use the application.
+
+2. EARLY ACCESS & SERVICE AVAILABILITY
+Readapt is currently provided in an "Early Access / Launch Preview" phase. During 
+this period, all premium features, digital books, synchronized PDFs, audio narrations, 
+and offline tools are made available to users without subscription charges. 
+We reserve the right to modify, introduce tiering, or offer optional premium 
+subscriptions in subsequent releases in full compliance with Google Play Billing policies.
+
+3. INTELLECTUAL PROPERTY & CONTENT LICENSE
+- App Content: All educational content, text, audio recordings, visual assets, 
+  and software code provided within Readapt are owned by or licensed to Readapt.
+- Personal Use Only: Content provided within the app is strictly for your personal, 
+  non-commercial educational and reading use. You may not extract, reverse engineer, 
+  re-distribute, resell, or publicly broadcast any audio files, PDFs, or materials 
+  stored or cached on your device.
+
+4. USER ACCOUNTS & SECURITY
+- You are responsible for safeguarding your login credentials.
+- You agree to notify us immediately of any unauthorized use of your account.
+- Readapt is not liable for any losses arising from unauthorized account access 
+  due to compromised user credentials.
+
+5. ACCEPTABLE USE
+You agree not to:
+- Interfere with, disrupt, or attempt to compromise server infrastructure.
+- Attempt unauthorized scraping, bulk downloading, or bypassing digital content protections.
+- Use the platform for any illegal, harmful, or abusive purpose.
+
+6. TERMINATION
+We reserve the right to suspend or terminate your account and access to the App 
+at our sole discretion, without prior notice, for conduct that violates these Terms 
+or harms other users or the service.
+
+7. DISCLAIMER OF WARRANTIES
+The App is provided on an "AS IS" and "AS AVAILABLE" basis. While we strive for 
+uninterrupted uptime and high quality, Readapt makes no warranties, express or 
+implied, regarding reliability, accuracy, or suitability for any particular purpose.
+
+8. LIMITATION OF LIABILITY
+To the maximum extent permitted by applicable law, Readapt shall not be liable for 
+any indirect, incidental, special, consequential, or punitive damages resulting 
+from your access to or inability to use the App.
+
+9. GOVERNING LAW
+These Terms are governed by and construed in accordance with the laws applicable 
+in your jurisdiction of operation, without regard to conflict of law principles.
+
+10. CONTACT INFORMATION
+For any inquiries regarding these Terms of Service or Data Safety, please reach out to:
+Email: support@readapt.app
+================================================================================
+

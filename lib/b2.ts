@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const rawEndpoint = process.env.B2_ENDPOINT || "s3.eu-central-003.backblazeb2.com";
@@ -42,6 +42,82 @@ export async function getB2SignedDownloadUrl(key: string, expiresInSeconds: numb
     Key: cleanKey,
   });
   return await getSignedUrl(b2Client, cmd, { expiresIn: expiresInSeconds });
+}
+
+/**
+ * Format bytes to readable string (KB, MB, GB)
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes === 0 || !Number.isFinite(bytes)) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+let cachedB2SizeMap: { map: Map<string, number>; rawContents: any[]; expiresAt: number } | null = null;
+
+/**
+ * Lists B2 objects with short in-memory cache to quickly look up file sizes
+ */
+export async function getB2ObjectSizeMap(): Promise<{ map: Map<string, number>; rawContents: any[] }> {
+  const now = Date.now();
+  if (cachedB2SizeMap && cachedB2SizeMap.expiresAt > now) {
+    return cachedB2SizeMap;
+  }
+
+  try {
+    const cmd = new ListObjectsV2Command({
+      Bucket: B2_BUCKET,
+      MaxKeys: 1000,
+    });
+    const res = await b2Client.send(cmd);
+    const contents = res.Contents || [];
+    const map = new Map<string, number>();
+
+    contents.forEach((item) => {
+      if (item.Key && item.Size !== undefined) {
+        const fullKey = item.Key.toLowerCase().trim();
+        map.set(fullKey, item.Size);
+
+        const filename = fullKey.split("/").pop();
+        if (filename && !map.has(filename)) {
+          map.set(filename, item.Size);
+        }
+      }
+    });
+
+    cachedB2SizeMap = { map, rawContents: contents, expiresAt: now + 30000 };
+    return cachedB2SizeMap;
+  } catch (err) {
+    console.warn("Failed to query B2 object map:", err);
+    return cachedB2SizeMap || { map: new Map(), rawContents: [] };
+  }
+}
+
+/**
+ * Extract size in bytes from URL or storage key
+ */
+export function getFileSizeFromUrlOrKey(urlOrKey?: string | null, sizeMap?: Map<string, number>): number {
+  if (!urlOrKey || !sizeMap) return 0;
+  const raw = String(urlOrKey).trim().toLowerCase();
+  if (sizeMap.has(raw)) return sizeMap.get(raw)!;
+
+  // Check without query string
+  const cleanUrl = raw.split("?")[0];
+  if (sizeMap.has(cleanUrl)) return sizeMap.get(cleanUrl)!;
+
+  // Check key after /api/media/
+  if (cleanUrl.includes("/api/media/")) {
+    const mediaKey = cleanUrl.split("/api/media/")[1];
+    if (mediaKey && sizeMap.has(mediaKey)) return sizeMap.get(mediaKey)!;
+  }
+
+  // Check raw filename
+  const filename = cleanUrl.split("/").pop();
+  if (filename && sizeMap.has(filename)) return sizeMap.get(filename)!;
+
+  return 0;
 }
 
 /**

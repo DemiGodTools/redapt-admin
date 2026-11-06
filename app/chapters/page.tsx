@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
+import { useRouter } from "next/navigation";
 import { uploadFileSmart } from "@/lib/clientUpload";
 
 interface ITocItem {
@@ -21,6 +22,12 @@ interface IChapterItem {
   for: number;
   isTrending: boolean;
   isDownloadable: boolean;
+  totalSizeBytes?: number;
+  totalSizeFormatted?: string;
+  mediaSizeBytes?: number;
+  mediaSizeFormatted?: string;
+  coverSizeBytes?: number;
+  coverSizeFormatted?: string;
   isProtected?: boolean;
   category: any;
   subCategory?: any;
@@ -28,6 +35,7 @@ interface IChapterItem {
   questions?: any[];
   toc?: ITocItem[];
   transcript?: string;
+  lyrics?: string;
   createdAt?: string;
 }
 
@@ -58,6 +66,7 @@ const Icons = {
   Calendar: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>,
   Shield: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
   Plus: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
+  HardDrive: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="12" x2="2" y2="12"></line><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" y1="16" x2="6.01" y2="16"></line><line x1="10" y1="16" x2="10.01" y2="16"></line></svg>,
   Check: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00D2B4" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>,
 };
 
@@ -150,6 +159,7 @@ function CustomDropdown({ value, onChange, options, placeholder = "Select...", m
 }
 
 export default function ChaptersAdminPage() {
+  const router = useRouter();
   const [chapters, setChapters] = useState<IChapterItem[]>([]);
   const [categories, setCategories] = useState<ICategory[]>([]);
   const [seriesList, setSeriesList] = useState<any[]>([]);
@@ -168,6 +178,10 @@ export default function ChaptersAdminPage() {
     } else if (accessData) {
       try {
         const access = JSON.parse(accessData);
+        if (role === "team_member" && (!access.chapters || access.chapters === "restrict")) {
+          router.replace("/admin/restricted?reason=restrict&module=chapters");
+          return;
+        }
         if (access.chapters === "edit") {
           setCanEdit(true); // Team member with 'edit' access
         }
@@ -330,7 +344,7 @@ export default function ChaptersAdminPage() {
     setFormSubCategory(typeof ch.subCategory === "object" ? ch.subCategory?._id : ch.subCategory || "");
     setFormSeries(seriesInfo?.id || ""); setFormTrending(Boolean(ch.isTrending));
     setFormDownloadable(ch.isDownloadable ?? true); setFormProtected(ch.isProtected !== undefined ? Boolean(ch.isProtected) : true);
-    setFormToc(Array.isArray(ch.toc) ? ch.toc : []); setFormTranscript(ch.transcript || "");
+    setFormToc(Array.isArray(ch.toc) ? ch.toc : []); setFormTranscript(ch.transcript || ch.lyrics || "");
     setModalTab("toc"); setActiveDetailId(null); setShowModal(true);
   };
 
@@ -396,6 +410,7 @@ export default function ChaptersAdminPage() {
         for: Number(formPlan), category: formCategory, subCategory: formSubCategory || null, series: formSeries || null, isTrending: formTrending,
         isDownloadable: formDownloadable, isProtected: formProtected, toc: formToc.filter((t) => t.title.trim() && t.cut.trim()),
         transcript: formType === "audio" ? formTranscript.trim() : "",
+        lyrics: formType === "audio" ? formTranscript.trim() : "",
       };
       const url = editingId ? `/api/admin/chapter?id=${editingId}` : `/api/admin/chapter`;
       const method = editingId ? "PUT" : "POST";
@@ -440,6 +455,8 @@ export default function ChaptersAdminPage() {
       if (sortBy === "a-z") return (a.title || "").localeCompare(b.title || "");
       if (sortBy === "z-a") return (b.title || "").localeCompare(a.title || "");
       if (sortBy === "oldest") return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      if (sortBy === "size-desc") return (b.totalSizeBytes || 0) - (a.totalSizeBytes || 0);
+      if (sortBy === "size-asc") return (a.totalSizeBytes || 0) - (b.totalSizeBytes || 0);
       if (sortBy === "series-order") { const orderA = getChapterSeries(a)?.order ?? 9999; const orderB = getChapterSeries(b)?.order ?? 9999; return orderA - orderB; }
       return new Date(b.createdAt || Date.now()).getTime() - new Date(a.createdAt || Date.now()).getTime();
     });
@@ -479,7 +496,7 @@ export default function ChaptersAdminPage() {
             <CustomDropdown value={filterCategory} onChange={setFilterCategory} options={[{ value: "all", label: "All Categories" }, ...categories.map((c) => ({ value: c._id, label: c.name, badgeColor: "gray" as const }))]} minWidth="165px" />
             <CustomDropdown value={filterSeries} onChange={setFilterSeries} options={[{ value: "all", label: `All Content (${chapters.length})` }, { value: "any", label: "In Any Series", badge: "LINKED", badgeColor: "purple" }, { value: "framework-only", label: "Framework Series Only", badge: "FRAMEWORK", badgeColor: "amber" }, { value: "none", label: "Standalone Chapters", badge: "SINGLE", badgeColor: "gray" }, ...allSeriesOptions.map((s) => ({ value: s._id, label: s.title, badge: s.isFramework ? "FRAMEWORK" : "SERIES", badgeColor: s.isFramework ? "amber" : "purple", group: "Available Series" }))]} minWidth="210px" />
             <CustomDropdown value={filterType} onChange={setFilterType} options={[{ value: "all", label: "All Media Types" }, { value: "pdf", label: "PDF Documents", badge: "PDF", badgeColor: "teal" }, { value: "audio", label: "Audio Books", badge: "AUDIO", badgeColor: "amber" }]} minWidth="150px" />
-            <CustomDropdown value={sortBy} onChange={setSortBy} options={[{ value: "newest", label: "Sort: Newest First" }, { value: "oldest", label: "Sort: Oldest First" }, { value: "a-z", label: "Sort: Title A-Z" }, { value: "z-a", label: "Sort: Title Z-A" }, { value: "series-order", label: "Sort: Series Order (#)" }]} minWidth="165px" />
+            <CustomDropdown value={sortBy} onChange={setSortBy} options={[{ value: "newest", label: "Sort: Newest First" }, { value: "oldest", label: "Sort: Oldest First" }, { value: "a-z", label: "Sort: Title A-Z" }, { value: "z-a", label: "Sort: Title Z-A" }, { value: "series-order", label: "Sort: Series Order (#)" }, { value: "size-desc", label: "Sort: Size (Largest)" }, { value: "size-asc", label: "Sort: Size (Smallest)" }]} minWidth="165px" />
             <button type="button" onClick={() => { setSearchTerm(""); setFilterPlan("all"); setFilterCategory("all"); setFilterType("all"); setFilterSeries("all"); setSortBy("newest"); }} style={{ padding: "9px 14px", backgroundColor: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "1px solid rgba(239, 68, 68, 0.22)", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}>Reset</button>
           </div>
 
@@ -528,6 +545,25 @@ export default function ChaptersAdminPage() {
                           <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: "4px", backgroundColor: ch.type === "audio" ? "rgba(245, 158, 11, 0.15)" : "rgba(0, 210, 180, 0.15)", color: ch.type === "audio" ? "#f59e0b" : "#00D2B4" }}>{ch.type || "pdf"}</span>
                           <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px", backgroundColor: ch.for === 3 ? "rgba(239, 68, 68, 0.15)" : ch.for === 2 ? "rgba(245, 158, 11, 0.15)" : ch.for === 1 ? "rgba(59, 130, 246, 0.15)" : "rgba(255,255,255,0.06)", color: ch.for === 3 ? "#ef4444" : ch.for === 2 ? "#f59e0b" : ch.for === 1 ? "#3b82f6" : "#9ca3af" }}>{ch.for === 3 ? "PRO" : ch.for === 2 ? "STD" : ch.for === 1 ? "BASIC" : "FREE"}</span>
                           {ch.isTrending && <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(236, 72, 153, 0.15)", color: "#ec4899" }}>TRENDING</span>}
+                          {ch.totalSizeFormatted && (
+                            <span
+                              title={`Total Size: ${ch.totalSizeFormatted} (Media: ${ch.mediaSizeFormatted || '0 B'}, Cover: ${ch.coverSizeFormatted || '0 B'})`}
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                backgroundColor: "rgba(0, 210, 180, 0.12)",
+                                border: "1px solid rgba(0, 210, 180, 0.25)",
+                                color: "#00D2B4",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px"
+                              }}
+                            >
+                              <Icons.HardDrive /> {ch.totalSizeFormatted}
+                            </span>
+                          )}
                         </div>
 
                         <h3 style={{ margin: "0 0 3px", fontSize: "15px", fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ch.title}</h3>

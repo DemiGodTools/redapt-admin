@@ -14,7 +14,6 @@ export async function GET(_: Request, { params }: Params) {
     await connectMongo();
 
     const { categoryId } = await params;
-    console.log("Invalid category id:", categoryId);
 
     if (!Types.ObjectId.isValid(categoryId)) {
       return NextResponse.json(
@@ -31,11 +30,20 @@ export async function GET(_: Request, { params }: Params) {
       .sort({ updatedAt: -1 })
       .lean();
 
+    const mappedChapters = chapters.map((c: any) => {
+      const lyricsVal = c.lyrics || c.transcript || "";
+      return {
+        ...c,
+        lyrics: lyricsVal,
+        transcript: lyricsVal,
+      };
+    });
+
     return NextResponse.json({
       success: true,
       data: {
-        count: chapters.length,
-        chapters,
+        count: mappedChapters.length,
+        chapters: mappedChapters,
       },
     });
   } catch (err) {

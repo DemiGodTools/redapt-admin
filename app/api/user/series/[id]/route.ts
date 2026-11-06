@@ -5,6 +5,7 @@ import { ISeriesContent } from "@/types/Series";
 import "@/models/Question.model";
 import "@/models/Category.model";
 import "@/models/Chapter.model";
+import "@/models/User.model";
 
 export async function GET(
   _req: Request,
@@ -12,29 +13,44 @@ export async function GET(
 ) {
   try {
     await connectMongo();
-const { id } = await params
+    const { id } = await params;
 
     const series = await Series.findById(id)
       .populate("category")
       .populate("chapters.content")
       .populate("recommendationBookId")
+      .populate({
+        path: "joinedBy",
+        select: "_id name userId image",
+      })
       .lean();
 
     if (!series) {
-const all = await Series.find({})
-console.log('series not found for id ', id, " but all series are", all)
+      const all = await Series.find({});
+      console.log("series not found for id ", id, " but all series are", all);
       return NextResponse.json(
         { success: false, message: "Series not found" },
         { status: 404 }
       );
     }
 
-    // 🔢 ensure items are ordered
-if (Array.isArray(series.chapters)) {
-    series.items = (series.chapters as ISeriesContent[]).sort(
-      (a, b) => a.order - b.order
-    );
-}
+    if (Array.isArray(series.joinedBy)) {
+      series.joinedBy = series.joinedBy.filter(Boolean);
+    }
+
+    // 🔢 ensure items are ordered and chapters have synchronized lyrics
+    if (Array.isArray(series.chapters)) {
+      series.chapters.forEach((item: any) => {
+        if (item?.content && typeof item.content === "object") {
+          const lyricsVal = item.content.lyrics || item.content.transcript || "";
+          item.content.lyrics = lyricsVal;
+          item.content.transcript = lyricsVal;
+        }
+      });
+      series.items = (series.chapters as ISeriesContent[]).sort(
+        (a, b) => a.order - b.order
+      );
+    }
 
     return NextResponse.json({
       success: true,

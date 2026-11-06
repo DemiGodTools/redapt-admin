@@ -2,6 +2,12 @@
 import jwt from "jsonwebtoken";
 import { User } from "@/models/User.model";
 
+/**
+ * ⚡ GOOGLE PLAY COMPLIANT EARLY ACCESS SWITCH (Backend)
+ * When true: All users receive full Pro access (tier 3) to all chapters and assessments.
+ */
+export const IS_EARLY_ACCESS_FREE = true;
+
 export const normalizeServerTier = (rawPlan: any): number => {
   const num = Number(rawPlan);
   if (!Number.isFinite(num) || num <= 0) return 0;
@@ -37,7 +43,7 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
   }
 
   if (!email && !userId) {
-    return { user: null, effectivePlan: 0, isExpired: false };
+    return { user: null, effectivePlan: IS_EARLY_ACCESS_FREE ? 3 : 0, isExpired: false };
   }
 
   const user = email
@@ -45,7 +51,16 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
     : await User.findById(userId);
 
   if (!user) {
-    return { user: null, effectivePlan: 0, isExpired: false };
+    return { user: null, effectivePlan: IS_EARLY_ACCESS_FREE ? 3 : 0, isExpired: false };
+  }
+
+  // ⚡ EARLY ACCESS VIP PASS: 100% full features unlocked
+  if (IS_EARLY_ACCESS_FREE) {
+    return {
+      user,
+      effectivePlan: 3, // Full Pro
+      isExpired: false,
+    };
   }
 
   const rawPlan = normalizeServerTier(user.subscription?.plan);

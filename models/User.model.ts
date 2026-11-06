@@ -11,7 +11,24 @@ const UserSchema = new Schema<IUser>(
   {
     email: { type: String, required: true, unique: true },
     name: { type: String, required: true },
-    userId: { type: String, required: true, unique: true },
+    userId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+      lowercase: true,
+      trim: true,
+    },
+    bio: { type: String, default: "", maxlength: 160 },
+    profession: { type: String, default: "" },
+    interests: [{ type: String }],
+    visibility: {
+      type: String,
+      enum: ["Public", "Private"],
+      default: "Public",
+    },
+    isProfileCompleted: { type: Boolean, default: false },
+    usernameLastChangedAt: { type: Date, default: null },
     subscription: {
       plan: {
         type: Number,
@@ -30,11 +47,54 @@ const UserSchema = new Schema<IUser>(
         answered: Number,
       },
     ],
-    correctAnsStreak: { type: Number, default: 0 }, //you can use this to identify also update it's values in each api call
+    correctAnsStreak: { type: Number, default: 0 },
+    streakData: {
+      streak: { type: Number, default: 0 },
+      lastDate: { type: String, default: "" },
+    },
+    recentReads: [
+      {
+        chapter: { type: Schema.Types.ObjectId, ref: "Chapter" },
+        readtill: { type: String, default: "1" },
+        total: { type: String, default: "1" },
+        readAt: { type: Date, default: Date.now },
+      },
+    ],
+    deletionStatus: {
+      type: String,
+      enum: ["ACTIVE", "PENDING_DELETION"],
+      default: "ACTIVE",
+    },
+    deletionScheduledAt: {
+      type: Date,
+      default: null,
+    },
+    deletionToken: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    isLoggedIn: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
+    lastLogoutAt: {
+      type: Date,
+      default: null,
+    },
+    lastActiveAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
   },
-  { timestamps: true }
+  { timestamps: true, strict: false }
 );
 
 export const User =
   models.User || model<IUser>("User", UserSchema);
-

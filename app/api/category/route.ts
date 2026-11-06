@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/connectMongo";
 import { Category } from "@/models/Category.model";
+import { Chapter } from "@/models/Chapter.model";
 import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";

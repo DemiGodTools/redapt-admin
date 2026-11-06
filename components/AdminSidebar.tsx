@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -9,6 +9,7 @@ const Icons = {
   Book: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>,
   Layers: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>,
   Help: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>,
+  Banner: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>,
   Folder: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>,
   Home: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>,
   Users: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
@@ -80,7 +81,12 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   const router = useRouter();
   
-  const [currentUser, setCurrentUser] = useState({ name: "Admin", email: "", role: "master_admin", access: null as any });
+  const [currentUser, setCurrentUser] = useState<{
+    name: string;
+    email: string;
+    role: string;
+    access: Record<string, string> | null;
+  }>({ name: "Admin", email: "", role: "master_admin", access: null });
 
   useEffect(() => {
     const accessData = localStorage.getItem("adminAccess");
@@ -107,19 +113,22 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
 
   const navItems = [
     { label: "Dashboard", href: "/admin", icon: <Icons.Home />, key: "dashboard" },
+    { label: "User Directory", href: "/admin/users", icon: <Icons.Users />, key: "dashboard" },
     { label: "Series & Frameworks", href: "/series", icon: <Icons.Layers />, key: "series" },
     { label: "Chapters Hub", href: "/chapters", icon: <Icons.Book />, key: "chapters" },
     { label: "Question Bank", href: "/questions", icon: <Icons.Help />, key: "qna" },
     { label: "Categories", href: "/categories", icon: <Icons.Folder />, key: "categories" },
+    { label: "Banners Spotlight", href: "/banners", icon: <Icons.Banner />, key: "banners" },
   ];
 
   // Filtering nav items based on user access
   const filteredNavItems = navItems.filter(item => {
-    if (currentUser.role === "master_admin") return true; 
-    if (!currentUser.access) return true; // Fallback
+    if (currentUser.role === "master_admin" || currentUser.role === "admin") return true; 
+    if (!currentUser.access) return false;
     
     // Check if the user has 'restrict' access for this module
-    return currentUser.access[item.key] !== "restrict";
+    const lvl = currentUser.access?.[item.key];
+    return lvl === "view" || lvl === "edit";
   });
 
 
@@ -232,9 +241,9 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
           </h2>
           
           <div style={{ backgroundColor: "#111827", padding: "12px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.05)" }}>
-            <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#fff" }}>{currentUser.name}</p>
-            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser.email}</p>
-            <span style={{ display: "inline-block", padding: "4px 8px", backgroundColor: currentUser.role === "master_admin" ? "rgba(0, 210, 180, 0.15)" : "rgba(59, 130, 246, 0.15)", color: currentUser.role === "master_admin" ? "#00D2B4" : "#3b82f6", fontSize: "10px", fontWeight: 800, borderRadius: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <p style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: 700, color: "#fff" }} suppressHydrationWarning>{currentUser.name}</p>
+            <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} suppressHydrationWarning>{currentUser.email}</p>
+            <span style={{ display: "inline-block", padding: "4px 8px", backgroundColor: currentUser.role === "master_admin" ? "rgba(0, 210, 180, 0.15)" : "rgba(59, 130, 246, 0.15)", color: currentUser.role === "master_admin" ? "#00D2B4" : "#3b82f6", fontSize: "10px", fontWeight: 800, borderRadius: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }} suppressHydrationWarning>
               {currentUser.role === "master_admin" ? "Admin" : "Team Member"}
             </span>
           </div>

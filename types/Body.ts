@@ -1,5 +1,3 @@
-
-
 import { MediaType, SubscriptionPlan } from "@/enums";
 import { Types } from "mongoose";
 
@@ -15,6 +13,8 @@ export interface CreateChapterBody {
   series?: string;
   author: string;
   isDownloadable?: boolean;
+  transcript?: string;
+  lyrics?: string;
   toc?: {
     cut: string;
     title: string;

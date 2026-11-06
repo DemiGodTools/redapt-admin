@@ -57,6 +57,7 @@ const ChapterSchema = new Schema<IChapter>(
       },
     ],
     transcript: { type: String, default: "" },
+    lyrics: { type: String, default: "" },
   },
   { timestamps: true }
 );

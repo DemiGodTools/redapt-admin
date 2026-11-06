@@ -1,0 +1,141 @@
+================================================================================
+PRIVACY POLICY FOR READAPT
+Last Updated: October 30, 2026
+Effective Date: October 30, 2026
+Application: Readapt (Mobile Application & Services)
+Contact: support@readapt.app
+Account Deletion Portal: https://redapt-admin.vercel.app/delete-account
+================================================================================
+
+1. INTRODUCTION
+Welcome to Readapt ("we", "our", or "us"). We are committed to protecting your 
+privacy and ensuring transparency about how your data is handled. 
+
+This Privacy Policy explains how Readapt collects, uses, stores, and protects 
+your personal information when you use our mobile application ("App") and 
+associated services.
+
+By using Readapt, you agree to the collection and use of information in 
+accordance with this Privacy Policy. If you do not agree with this policy, 
+please do not use the application.
+
+
+2. INFORMATION WE COLLECT
+We only collect information necessary to provide, personalize, and improve 
+your learning and reading experience.
+
+A. Personal Information (Provided by You)
+- Account Credentials: When you sign in (e.g., via Google OAuth or Email), 
+  we receive basic profile details such as your Name, Email Address, and 
+  Profile Picture URL.
+- Account ID: A unique identifier assigned to your account to securely sync 
+  your data across devices.
+
+B. App Activity and User-Generated Content
+- Reading & Learning Progress: Current chapter read, reading history, streak 
+  counters, last active dates, and completed content.
+- User Interactions: Bookmarks, highlights, notes/annotations, liked content, 
+  and quiz/exercise responses.
+- Offline Downloads: Content cached locally on your device storage to allow 
+  offline reading and audio playback.
+
+C. Financial and Payment Information
+- READAPT DOES NOT COLLECT, PROCESS, OR STORE ANY FINANCIAL DATA.
+- We do not ask for or collect credit card numbers, debit card details, bank 
+  account information, or UPI credentials.
+- All digital features during the Early Access period are provided completely 
+  free of charge. Any future in-app purchases or subscriptions will be processed 
+  exclusively and securely through Google Play In-App Billing in full compliance 
+  with Google Play Policies.
+
+D. Device and Diagnostic Information
+- Device Information: Operating system version, device model, and language 
+  preference to ensure proper rendering and responsive layout.
+- Crash Reports & Performance: Anonymous error logs and performance diagnostics 
+  to help us identify and fix software bugs.
+
+
+3. HOW WE USE YOUR INFORMATION
+We use the collected information solely for the following purposes:
+- To authenticate and maintain your user account.
+- To synchronize your reading progress, streaks, bookmarks, and notes across sessions.
+- To deliver streaming audio narration and synchronized reading material.
+- To provide offline access to requested chapters and books.
+- To detect, prevent, and address technical bugs, security issues, or abuse.
+- To communicate critical service updates or respond to your customer support requests.
+
+
+4. DATA SHARING AND THIRD-PARTY DISCLOSURE
+We respect your privacy. WE DO NOT SELL, RENT, OR TRADE YOUR PERSONAL DATA 
+TO THIRD PARTIES FOR ADVERTISING OR MARKETING PURPOSES.
+
+We share data only with trusted service infrastructure providers strictly 
+necessary to run the App:
+- Cloud Hosting & Database: MongoDB Atlas / Cloud providers for secure encrypted data storage.
+- Authentication: Google Identity Services for secure login authentication.
+- Media Storage: Secure cloud storage (Backblaze B2 / CDN) for serving educational book covers, audio, and PDF materials.
+
+All third-party partners are bound by strict data protection agreements and 
+industry-standard security practices.
+
+
+5. DATA SECURITY & ENCRYPTION
+- Data in Transit: All data transferred between the Readapt App and our servers 
+  is encrypted using modern Transport Layer Security (HTTPS / TLS 1.2+).
+- Data at Rest: User credentials, tokens, and database records are stored in 
+  secured, access-restricted databases with encryption-at-rest.
+- Offline Data: Downloaded reading files stored on your local device are isolated 
+  within the application's private app sandbox.
+
+
+6. DATA RETENTION & ACCOUNT DELETION POLICY
+We retain your personal data only as long as your account remains active.
+
+You have the complete right to request the deletion of your account and all 
+associated personal data at any time:
+
+A. In-App Account Deletion:
+- Open the Readapt App -> Go to the Profile Tab -> Tap "Delete Account" -> 
+  Confirm in the dialog.
+
+B. Web-Based Account Deletion (Without Installing the App):
+- Visit our public Deletion Portal at:
+  https://redapt-admin.vercel.app/delete-account
+- Enter your registered email address to check your status or request deletion.
+
+C. 48-Hour Grace Period & Recovery:
+- To protect you against accidental deletions, deletion requests are placed in a 
+  48-hour grace period.
+- You can cancel the deletion request at any time during these 48 hours simply by:
+  (1) Logging back into the Readapt App, OR
+  (2) Visiting the Deletion Portal and tapping "Cancel Deletion Request".
+
+D. What Data is Deleted vs. Anonymized:
+- Permanently Purged: Name, email address, profile photo, authentication tokens, 
+  reading history, streak counters, bookmarks, and quiz scores will be permanently 
+  deleted from active servers after the 48-hour grace period.
+- Anonymized Content: In accordance with Google Play Policy and community integrity, 
+  public discussion comments made by the user will be unlinked and anonymized 
+  (attributed to "Anonymous / Deleted User") to avoid breaking public conversation threads.
+
+
+7. CHILDREN'S PRIVACY
+Readapt is not directed to children under the age of 13. We do not knowingly 
+collect personal identifiable information from children under 13. If we discover 
+that a child under 13 has provided us with personal information, we immediately 
+delete this from our servers. If you are a parent or guardian and believe your child 
+has provided personal data, please contact us.
+
+
+8. CHANGES TO THIS PRIVACY POLICY
+We may update our Privacy Policy periodically to reflect changes in our services 
+or legal requirements. Any updates will be posted on this page with an updated 
+"Last Updated" revision date. We encourage you to review this policy periodically.
+
+
+9. CONTACT US
+If you have questions, feedback, or data privacy requests regarding this policy, 
+please contact us at:
+- Email: support@readapt.app
+- Deletion Portal: https://redapt-admin.vercel.app/delete-account
+================================================================================

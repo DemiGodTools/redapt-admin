@@ -11,6 +11,7 @@ import { Chapter } from "@/models/Chapter.model";
 import { Comment } from "@/models/Comment.model";
 import { Question } from "@/models/Question.model";
 import { User } from "@/models/User.model";
+import { IS_EARLY_ACCESS_FREE } from "@/lib/verifyUserEntitlement";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,7 +31,7 @@ export async function GET(
 
     // ⚡ 1. SECURE: Get user's plan via Auth Header
     const userEmail = req.headers.get("x-user-email");
-    let userPlan = 0;
+    let userPlan = IS_EARLY_ACCESS_FREE ? 3 : 0;
     
     if (userEmail) {
       const user = await User.findOne({ email: userEmail }).lean();
@@ -81,6 +82,11 @@ export async function GET(
       // Empty the PDF link so bypassers get nothing
       chapter.media = ""; 
     }
+
+    // Ensure lyrics & transcript are always synchronized and available
+    const lyricsVal = chapter.lyrics || chapter.transcript || "";
+    chapter.transcript = lyricsVal;
+    chapter.lyrics = lyricsVal;
 
     const rawQuestionsList = Array.isArray(rawChapterDoc?.questions) && rawChapterDoc.questions.length > 0
         ? rawChapterDoc.questions

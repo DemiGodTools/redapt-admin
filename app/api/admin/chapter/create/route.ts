@@ -1,3 +1,4 @@
+import { logActivity } from "@/lib/activityLogger";
 import { NextRequest, NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { MediaType, SubscriptionPlan } from "@/enums";
@@ -68,6 +69,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const lyricsText = (body.lyrics || body.transcript || "").trim();
+
     const chapter = await Chapter.create({
       title: body.title,
       details: body.details,
@@ -80,7 +83,21 @@ export async function POST(req: NextRequest) {
       author: body.author,
       isDownloadable: body.isDownloadable ?? true,
       toc: body.toc ?? [],
+      transcript: lyricsText,
+      lyrics: lyricsText,
     });
+
+    const adminRole = req.headers.get("x-admin-role") || "admin";
+    const adminName = req.headers.get("x-admin-name") || "Admin";
+    await logActivity({
+      action: "CHAPTER_ADDED",
+      category: "content",
+      title: chapter.title,
+      description: "New chapter published in catalog",
+      performedBy: adminName,
+      performedByRole: adminRole,
+      metadata: { chapterId: chapter._id.toString() },
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, data: chapter }, { status: 201 });
   } catch (err) {

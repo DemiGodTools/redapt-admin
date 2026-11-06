@@ -36,10 +36,19 @@ export async function POST(req: Request) {
       .populate("category")
       .lean();
 
+    const mappedChapters = chapters.map((c: any) => {
+      const lyricsVal = c.lyrics || c.transcript || "";
+      return {
+        ...c,
+        lyrics: lyricsVal,
+        transcript: lyricsVal,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      count: chapters.length,
-      chapters,
+      count: mappedChapters.length,
+      chapters: mappedChapters,
     });
   } catch (err) {
     console.error("Get Chapters By IDs Error:", err);

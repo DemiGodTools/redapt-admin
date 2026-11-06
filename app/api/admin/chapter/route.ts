@@ -6,6 +6,7 @@ import { Chapter } from "@/models/Chapter.model";
 import "@/models/Category.model";
 import "@/models/Question.model";
 import { Series } from "@/models/Series.model";
+import { getB2ObjectSizeMap, getFileSizeFromUrlOrKey, formatBytes } from "@/lib/b2";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +15,7 @@ export const revalidate = 0;
 export async function GET() {
   try {
     await connectMongo();
-    const [chapters, allSeries] = await Promise.all([
+    const [chapters, allSeries, b2Data] = await Promise.all([
       Chapter.find({})
         .populate("category", "name")
         .populate("subCategory", "name")
@@ -25,10 +26,30 @@ export async function GET() {
         .select("_id title type chapters category for")
         .sort({ createdAt: -1 })
         .lean(),
+      getB2ObjectSizeMap().catch(() => ({ map: new Map() })),
     ]);
 
+    const sizeMap = b2Data.map;
+    const enrichedChapters = chapters.map((ch: any) => {
+      const mediaSize = getFileSizeFromUrlOrKey(ch.media, sizeMap);
+      const coverSize = getFileSizeFromUrlOrKey(ch.cover, sizeMap);
+      const totalSize = mediaSize + coverSize;
+      const lyricsVal = ch.lyrics || ch.transcript || "";
+      return {
+        ...ch,
+        transcript: lyricsVal,
+        lyrics: lyricsVal,
+        mediaSizeBytes: mediaSize,
+        coverSizeBytes: coverSize,
+        totalSizeBytes: totalSize,
+        totalSizeFormatted: formatBytes(totalSize),
+        mediaSizeFormatted: formatBytes(mediaSize),
+        coverSizeFormatted: formatBytes(coverSize),
+      };
+    });
+
     return NextResponse.json(
-      { success: true, data: chapters, series: allSeries },
+      { success: true, data: enrichedChapters, series: allSeries },
       {
         headers: {
           "Cache-Control": "no-store, max-age=0, must-revalidate",
@@ -64,7 +85,8 @@ export async function POST(req: NextRequest) {
       isDownloadable = true,
       isProtected = true,
       toc = [],
-      transcript = "", // ⚡ Naya transcript field
+      transcript = "",
+      lyrics = "",
     } = body;
 
     if (!title?.trim() || !details?.trim() || !media?.trim() || !cover?.trim() || !author?.trim() || !category) {
@@ -82,6 +104,7 @@ export async function POST(req: NextRequest) {
     }
 
     const validSeriesId = series && Types.ObjectId.isValid(series) ? new Types.ObjectId(series) : null;
+    const lyricsVal = type === "audio" ? String(lyrics || transcript || "").trim() : "";
 
     const newChapter = await Chapter.create({
       title: title.trim(),
@@ -98,7 +121,8 @@ export async function POST(req: NextRequest) {
       isDownloadable: Boolean(isDownloadable),
       isProtected: Boolean(isProtected),
       toc: Array.isArray(toc) ? toc.filter((t: any) => t.title?.trim() && t.cut?.trim()) : [],
-      transcript: type === "audio" ? transcript.trim() : "", // ⚡ Save Transcript sirf Audio ke liye
+      transcript: lyricsVal,
+      lyrics: lyricsVal,
       questions: [],
       comments: [],
       likes: 0,
@@ -194,9 +218,11 @@ export async function PUT(req: NextRequest) {
       updateFields.toc = body.toc.filter((t: any) => t.title?.trim() && t.cut?.trim());
     }
     
-    // ⚡ Update Transcript logic
-    if (body.transcript !== undefined) {
-      updateFields.transcript = body.type === "audio" ? body.transcript.trim() : "";
+    // ⚡ Update Transcript / Lyrics logic
+    if (body.transcript !== undefined || body.lyrics !== undefined) {
+      const val = body.type === "audio" ? String(body.lyrics ?? body.transcript ?? "").trim() : "";
+      updateFields.transcript = val;
+      updateFields.lyrics = val;
     }
 
     const updatedChapter = await Chapter.findByIdAndUpdate(

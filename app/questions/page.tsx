@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
+import { useRouter } from "next/navigation";
 
 interface IQuestionItem {
   _id: string;
@@ -100,6 +101,7 @@ function CustomDropdown({ value, onChange, options, placeholder = "Select..." }:
 }
 
 export default function QuestionsAdminPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"questions" | "link">("questions");
 
   const [questions, setQuestions] = useState<IQuestionItem[]>([]);
@@ -123,6 +125,10 @@ export default function QuestionsAdminPage() {
     } else if (accessData) {
       try {
         const access = JSON.parse(accessData);
+        if (role === "team_member" && (!access.qna || access.qna === "restrict")) {
+          router.replace("/admin/restricted?reason=restrict&module=qna");
+          return;
+        }
         if (access.qna === "edit") {
           setCanEdit(true);
         }

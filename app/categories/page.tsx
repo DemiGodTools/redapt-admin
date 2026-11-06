@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
+import { useRouter } from "next/navigation";
 import { uploadFileSmart } from "@/lib/clientUpload";
 
 interface ICategoryItem {
@@ -13,7 +14,22 @@ interface ICategoryItem {
   parentCategory?: string | null;
   subCategories?: ICategoryItem[];
   order?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+const formatDateTime = (dateStr?: string) => {
+  if (!dateStr) return "N/A";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "N/A";
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) +
+      " " +
+      d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  } catch {
+    return "N/A";
+  }
+};
 
 const DEFAULT_IMG = "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=500&auto=format&fit=crop&q=60";
 
@@ -32,6 +48,7 @@ const Icons = {
 };
 
 export default function CategoriesAdminPage() {
+  const router = useRouter();
   const [categories, setCategories] = useState<ICategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -48,7 +65,11 @@ export default function CategoriesAdminPage() {
     } else if (accessData) {
       try {
         const access = JSON.parse(accessData);
-        if (access.categories === "edit" || (!access.categories && access.dashboard === "edit")) { 
+        if (role === "team_member" && (!access.categories || access.categories === "restrict")) {
+          router.replace("/admin/restricted?reason=restrict&module=categories");
+          return;
+        }
+        if (access.categories === "edit") { 
           setCanEdit(true); 
         }
       } catch (e) {
@@ -353,6 +374,9 @@ export default function CategoriesAdminPage() {
                             <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 600, color: "#fff" }}>
                               {cat.name}
                             </h3>
+                            <span style={{ fontSize: "11px", color: "#6b7280" }}>
+                              • Created: {formatDateTime(cat.createdAt)}
+                            </span>
                             <span
                               style={{
                                 fontSize: "11px",
@@ -514,8 +538,9 @@ export default function CategoriesAdminPage() {
                                     <div style={{ fontSize: "14px", fontWeight: 700, color: "#fff", marginBottom: "4px", lineHeight: "1.3" }}>
                                       {sub.name}
                                     </div>
-                                    <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                                      ID: {sub._id.slice(-6)}
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px", color: "#6b7280" }}>
+                                      <span>ID: {sub._id.slice(-6)}</span>
+                                      <span>🕒 {formatDateTime(sub.createdAt)}</span>
                                     </div>
                                   </div>
 

@@ -27,7 +27,9 @@ export async function PUT(
       "author",
       "isDownloadable",
       "toc",
-      "questions", // 👈 Chapter-level questions field add ho gaya
+      "questions",
+      "transcript",
+      "lyrics",
     ];
 
     for (const field of fields) {
@@ -43,6 +45,13 @@ export async function PUT(
           update[field] = body[field];
         }
       }
+    }
+
+    // Keep transcript and lyrics in sync if either is provided
+    if (body.transcript !== undefined || body.lyrics !== undefined) {
+      const val = String(body.lyrics ?? body.transcript ?? "").trim();
+      update.transcript = val;
+      update.lyrics = val;
     }
 
     // Special case: series provided but category missing

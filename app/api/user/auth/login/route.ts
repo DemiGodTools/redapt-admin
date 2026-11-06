@@ -1,7 +1,11 @@
+import { logActivity } from "@/lib/activityLogger";
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
+import "@/models/Chapter.model";
+import "@/models/Category.model";
+import { purgeExpiredDeletions } from "@/lib/accountDeletion";
 
 interface GoogleTokenInfo {
   email?: string;
@@ -15,9 +19,15 @@ export async function POST(req: Request) {
   try {
     const { googleAccessToken, idToken } = await req.json();
 
-    const tokenToVerify = idToken || googleAccessToken;
+    const isJwt = (t?: string) => typeof t === "string" && (t.startsWith("ey") || t.split(".").length === 3);
 
-    if (!tokenToVerify) {
+    // Determine candidate ID token and access token
+    const candidateIdToken = idToken || (isJwt(googleAccessToken) ? googleAccessToken : undefined);
+    const candidateAccessToken =
+      (!isJwt(googleAccessToken) ? googleAccessToken : undefined) ||
+      (!isJwt(idToken) ? idToken : undefined);
+
+    if (!candidateIdToken && !candidateAccessToken) {
       return NextResponse.json(
         { success: false, message: "Missing Google token" },
         { status: 400 }
@@ -28,66 +38,78 @@ export async function POST(req: Request) {
     let name: string | undefined;
     let picture: string | undefined;
 
-    // 1. Verify token with Google's OAuth2 tokeninfo endpoint
-    if (idToken) {
-      const googleRes = await fetch(
-        `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`
-      );
-      const data: GoogleTokenInfo = await googleRes.json();
-
-      if (!googleRes.ok || !data.email) {
-        return NextResponse.json(
-          { success: false, message: "Invalid or expired Google ID token" },
-          { status: 401 }
+    // 1. Try ID token verification if available
+    if (candidateIdToken) {
+      try {
+        const googleRes = await fetch(
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${candidateIdToken}`
         );
-      }
-
-      email = data.email;
-      name = data.name;
-      picture = data.picture;
-    } else {
-      // Fallback: Verify access token via userinfo endpoint
-      const userInfoRes = await fetch(
-        "https://www.googleapis.com/oauth2/v3/userinfo",
-        {
-          headers: {
-            Authorization: `Bearer ${googleAccessToken}`,
-          },
+        if (googleRes.ok) {
+          const data: GoogleTokenInfo = await googleRes.json();
+          if (data?.email) {
+            email = data.email;
+            name = data.name;
+            picture = data.picture;
+          }
         }
-      );
-
-      if (!userInfoRes.ok) {
-        return NextResponse.json(
-          { success: false, message: "Failed to fetch Google user info" },
-          { status: 401 }
-        );
+      } catch (err) {
+        console.warn("ID token verification failed, trying fallback:", err);
       }
+    }
 
-      const googleUser: GoogleTokenInfo = await userInfoRes.json();
-      email = googleUser.email;
-      name = googleUser.name;
-      picture = googleUser.picture;
+    // 2. Fallback to access token userinfo verification if email not resolved yet
+    if (!email && candidateAccessToken) {
+      try {
+        const userInfoRes = await fetch(
+          "https://www.googleapis.com/oauth2/v3/userinfo",
+          {
+            headers: {
+              Authorization: `Bearer ${candidateAccessToken}`,
+            },
+          }
+        );
+
+        if (userInfoRes.ok) {
+          const googleUser: GoogleTokenInfo = await userInfoRes.json();
+          email = googleUser?.email;
+          name = googleUser?.name;
+          picture = googleUser?.picture;
+        }
+      } catch (err) {
+        console.warn("Access token verification failed:", err);
+      }
     }
 
     if (!email) {
       return NextResponse.json(
-        { success: false, message: "Email not provided by Google account" },
-        { status: 400 }
+        { success: false, message: "Invalid or expired Google token" },
+        { status: 401 }
       );
     }
 
     // 2. Connect DB & Find/Create User
     await connectMongo();
+    await purgeExpiredDeletions().catch(() => {});
 
     let user = await User.findOne({ email });
 
-if (user && user.subscription?.plan > 0 && user.subscription?.expiresOn) {
-  const expiryMs = new Date(user.subscription.expiresOn).getTime();
-  if (!isNaN(expiryMs) && expiryMs <= Date.now()) {
-    user.subscription.plan = 0;
-    await user.save();
-  }
-}
+    const isNewUser = !user;
+    let wasDeletionCancelled = false;
+    if (user && user.deletionStatus === "PENDING_DELETION") {
+      user.deletionStatus = "ACTIVE";
+      user.deletionScheduledAt = undefined;
+      user.deletionToken = undefined;
+      await user.save();
+      wasDeletionCancelled = true;
+    }
+
+    if (user && user.subscription?.plan > 0 && user.subscription?.expiresOn) {
+      const expiryMs = new Date(user.subscription.expiresOn).getTime();
+      if (!isNaN(expiryMs) && expiryMs <= Date.now()) {
+        user.subscription.plan = 0;
+        await user.save();
+      }
+    }
 
     if (!user) {
       const baseId = email.split("@")[0];
@@ -102,11 +124,53 @@ if (user && user.subscription?.plan > 0 && user.subscription?.expiresOn) {
       });
     }
 
+    // Update user login status
+    await User.collection.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          isLoggedIn: true,
+          lastLoginAt: new Date(),
+        },
+      }
+    );
+
     // 3. Issue internal JWT
     const jwtSecret =
       process.env.JWT_SECRET ||
       process.env.NEXTAUTH_SECRET ||
       "readapt_super_secret_jwt_key_12345";
+
+    // Log activity
+    if (isNewUser) {
+      logActivity({
+        action: "USER_SIGNUP",
+        category: "auth",
+        title: user.name ? `${user.name} (${user.email})` : user.email,
+        description: "New user registered with Google account",
+        performedBy: user.name || user.email,
+        performedByRole: "user",
+        metadata: { userId: user._id.toString() },
+      }).catch(() => {});
+    } else if (wasDeletionCancelled) {
+      logActivity({
+        action: "DELETION_CANCELLED",
+        category: "auth",
+        title: user.email,
+        description: "User logged in and cancelled pending deletion request",
+        performedBy: user.name || user.email,
+        performedByRole: "user",
+      }).catch(() => {});
+    } else {
+      logActivity({
+        action: "USER_LOGIN",
+        category: "auth",
+        title: user.name ? `${user.name} (${user.email})` : user.email,
+        description: "User session authenticated",
+        performedBy: user.name || user.email,
+        performedByRole: "user",
+      }).catch(() => {});
+    }
 
     const token = jwt.sign(
       {
@@ -118,11 +182,20 @@ if (user && user.subscription?.plan > 0 && user.subscription?.expiresOn) {
       { expiresIn: "30d" }
     );
 
+    const populatedUser = await User.findById(user._id)
+      .populate("likes")
+      .populate({
+        path: "recentReads.chapter",
+        populate: { path: "category" },
+      })
+      .select("-__v");
+
     return NextResponse.json({
       success: true,
       token,
       expiry: Date.now() + 1000 * 60 * 60 * 24 * 30,
-      user,
+      user: populatedUser || user,
+      wasDeletionCancelled,
     });
   } catch (error) {
     console.error("Google Login Error:", error);

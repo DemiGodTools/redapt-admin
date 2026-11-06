@@ -2,10 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
 import "@/models/Chapter.model";
+import { jwtVerify } from "jose";
 
 export async function GET(req: NextRequest) {
   try {
-    const userEmail = req.headers.get("x-user-email");
+    let userEmail = req.headers.get("x-user-email");
+
+    if (!userEmail) {
+      const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+        if (token && token !== "undefined" && token !== "null") {
+          try {
+            const rawSecret =
+              process.env.JWT_SECRET ||
+              process.env.NEXTAUTH_SECRET ||
+              "readapt_super_secret_jwt_key_12345";
+            const secret = new TextEncoder().encode(rawSecret.trim());
+            const { payload } = await jwtVerify(token, secret);
+            userEmail = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
+          } catch {}
+        }
+      }
+    }
 
     if (!userEmail) {
       return NextResponse.json(
@@ -18,6 +37,10 @@ export async function GET(req: NextRequest) {
 
     const user = await User.findOne({ email: userEmail })
       .populate("likes")
+      .populate({
+        path: "recentReads.chapter",
+        populate: { path: "category" },
+      })
       .select("-__v");
 
     if (!user) {
@@ -26,6 +49,18 @@ export async function GET(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Update presence & active session
+    User.collection.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          isLoggedIn: true,
+          lastActiveAt: new Date(),
+          ...(user.lastLoginAt ? {} : { lastLoginAt: new Date() }),
+        },
+      }
+    ).catch(() => {});
 
     return NextResponse.json({
       success: true,

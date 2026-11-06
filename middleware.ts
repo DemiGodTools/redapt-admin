@@ -37,14 +37,13 @@ export async function verifyJWT(token: string): Promise<UserJWTPayload | null> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ⚡ Public User APIs
+  // ⚡ Public Non-User APIs
   if (
-    pathname.startsWith("/api/user/chapter") || pathname.startsWith("/api/chapter") ||
-    pathname.startsWith("/api/admin/chapter") || pathname.startsWith("/api/admin/question") ||
-    pathname.startsWith("/api/admin/series") || pathname.startsWith("/api/series") || 
-    pathname.startsWith("/api/question") || pathname.startsWith("/api/user/question/") ||
-    pathname.startsWith("/api/category") || pathname.startsWith("/api/user/category") ||
-    pathname.startsWith("/api/user/feed") || pathname.startsWith("/api/user/thought") || pathname.startsWith("/api/user/series/")
+    pathname.startsWith("/api/chapter") ||
+    pathname.startsWith("/api/series") || 
+    pathname.startsWith("/api/banner") ||
+    pathname.startsWith("/api/question") ||
+    pathname.startsWith("/api/category")
   ) {
     return NextResponse.next();
   }
@@ -53,6 +52,7 @@ export async function middleware(request: NextRequest) {
   const isProtectedAdminUI =
     pathname.startsWith("/chapters") || pathname.startsWith("/series") ||
     pathname.startsWith("/questions") || pathname.startsWith("/categories") ||
+    pathname.startsWith("/banners") ||
     pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
 
   if (isProtectedAdminUI && !pathname.startsWith("/api/admin/auth") && !pathname.startsWith("/admin/login")) {
@@ -69,25 +69,61 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
 
+    // If heading to the restricted page itself, let it render without further restriction checks
+    if (pathname === "/admin/restricted" || pathname.startsWith("/admin/restricted")) {
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set("x-admin-role", adminPayload.role || "master_admin");
+      requestHeaders.set("x-admin-name", adminPayload.name || adminPayload.email || "Admin");
+      return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+
     // ⚡ TEAM MEMBER RBAC LOGIC 
     if (adminPayload.role === "team_member" && adminPayload.access) {
       const { access } = adminPayload;
       const path = pathname.toLowerCase();
-      let moduleName = "module";
+      let moduleName = "";
       let accessLevel = "view"; // default fallback
 
-      if (path.includes("/series")) { moduleName = "series"; accessLevel = access.series; }
-      else if (path.includes("/chapter")) { moduleName = "chapters"; accessLevel = access.chapters; }
-      else if (path.includes("/question")) { moduleName = "qna"; accessLevel = access.qna; }
-      else if (path.includes("/banner")) { moduleName = "banners"; accessLevel = access.banners; }
-      else if (path.includes("/categor")) { moduleName = "categories"; accessLevel = access.categories || "restrict"; }
+      if (path.startsWith("/series") || path.startsWith("/api/admin/series")) {
+        moduleName = "series";
+        accessLevel = access.series || "restrict";
+      } else if (path.startsWith("/chapter") || path.startsWith("/api/admin/chapter")) {
+        moduleName = "chapters";
+        accessLevel = access.chapters || "restrict";
+      } else if (path.startsWith("/question") || path.startsWith("/api/admin/question")) {
+        moduleName = "qna";
+        accessLevel = access.qna || "restrict";
+      } else if (path.startsWith("/banner") || path.startsWith("/api/admin/banner")) {
+        moduleName = "banners";
+        accessLevel = access.banners || "restrict";
+      } else if (path.startsWith("/categor") || path.startsWith("/api/admin/categor")) {
+        moduleName = "categories";
+        accessLevel = access.categories || "restrict";
+      } else if (
+        path === "/admin" ||
+        path === "/admin/" ||
+        path.startsWith("/admin/users") ||
+        path.startsWith("/admin/deletions") ||
+        path.startsWith("/api/admin/dashboard") ||
+        path.startsWith("/api/admin/thought") ||
+        path.startsWith("/api/admin/storage") ||
+        path.startsWith("/api/admin/activities") ||
+        path.startsWith("/api/admin/users") ||
+        path.startsWith("/api/admin/deletions")
+      ) {
+        moduleName = "dashboard";
+        accessLevel = access.dashboard || "restrict";
+      } else if (path.startsWith("/admin/team") || path.startsWith("/api/admin/team")) {
+        moduleName = "team";
+        accessLevel = "restrict";
+      }
 
-      // 1. API Blocks (If clicking Save/Delete from a View-Only page)
-      if (pathname.startsWith("/api/admin/") && request.method !== "GET" && !pathname.startsWith("/api/admin/auth")) {
+      // 1. API Blocks
+      if (pathname.startsWith("/api/admin/") && !pathname.startsWith("/api/admin/auth")) {
         if (accessLevel === "restrict") {
           return NextResponse.json({ success: false, errorType: "RBAC", message: `Access Denied: You are restricted from ${moduleName}.` }, { status: 403 });
         }
-        if (accessLevel === "view") {
+        if (accessLevel === "view" && request.method !== "GET") {
           return NextResponse.json({ success: false, errorType: "RBAC", message: `You only have VIEW access for ${moduleName}. You cannot edit or create.` }, { status: 403 });
         }
       }
@@ -106,6 +142,51 @@ export async function middleware(request: NextRequest) {
 
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-admin-role", adminPayload.role || "master_admin");
+    requestHeaders.set("x-admin-name", adminPayload.name || adminPayload.email || "Admin");
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  // ⚡ User API Protection & Email Injection
+  if (
+    pathname.startsWith("/api/user") &&
+    !pathname.startsWith("/api/user/auth/login") &&
+    !pathname.startsWith("/api/user/payment/confirm")
+  ) {
+    let userEmail = "";
+    const authHeader = request.headers.get("Authorization") || request.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+      if (token && token !== "undefined" && token !== "null") {
+        const payload = await verifyJWT(token);
+        if (payload?.email) {
+          userEmail = payload.email;
+        }
+      }
+    }
+
+    const requestHeaders = new Headers(request.headers);
+    if (userEmail) {
+      requestHeaders.set("x-user-email", userEmail);
+    }
+
+    const isProtectedUserRoute =
+      pathname.startsWith("/api/user/get-self") ||
+      pathname.startsWith("/api/user/update") ||
+      pathname.startsWith("/api/user/payment/order") ||
+      pathname.startsWith("/api/user/series/join") ||
+      pathname.startsWith("/api/user/series/exit") ||
+      pathname.startsWith("/api/user/chapter/like") ||
+      pathname.startsWith("/api/user/chapter/comment") ||
+      pathname.startsWith("/api/user/question/comment") ||
+      pathname.startsWith("/api/user/question/attempt");
+
+    if (isProtectedUserRoute && !userEmail) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: Invalid or missing session" },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
@@ -113,5 +194,14 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*", "/chapters/:path*", "/series/:path*", "/questions/:path*", "/categories/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/api/admin/:path*",
+    "/chapters/:path*",
+    "/series/:path*",
+    "/questions/:path*",
+    "/categories/:path*",
+    "/banners/:path*",
+    "/api/user/:path*",
+  ],
 };
