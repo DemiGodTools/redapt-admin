@@ -39,6 +39,9 @@ const UserSchema = new Schema<IUser>(
     },
     likes: [{ type: Schema.Types.ObjectId, ref: "Chapter" }],
     image: String,
+    // Multi-resolution avatar variants (128 / 256). `image` is the 512px one.
+    imageSm: String,
+    imageMd: String,
     joinedSeries: { type: Schema.Types.ObjectId, ref: "Series" },
     profileLevel: { type: Number, default: 1 },
     questionsAttempted: [

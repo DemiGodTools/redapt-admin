@@ -5,6 +5,7 @@ import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
 import "@/models/Chapter.model";
 import "@/models/Category.model";
+import { Comment } from "@/models/Comment.model";
 import { purgeExpiredDeletions } from "@/lib/accountDeletion";
 
 interface GoogleTokenInfo {
@@ -134,6 +135,23 @@ export async function POST(req: Request) {
         },
       }
     );
+
+    // ⚡ Relink any past comments from this user's email so they never show as anonymous or broken
+    try {
+      await Comment.updateMany(
+        { userEmail: user.email },
+        {
+          $set: {
+            by: user._id,
+            userName: user.name,
+            userHandle: user.userId,
+            userImage: user.image,
+          },
+        }
+      );
+    } catch (err) {
+      console.warn("Could not relink comments on login:", err);
+    }
 
     // 3. Issue internal JWT
     const jwtSecret =

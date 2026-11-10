@@ -19,6 +19,10 @@ export interface IUser {
   };
   likes: Types.ObjectId[];
   image?: string;
+  /** 256px avatar variant */
+  imageMd?: string;
+  /** 128px avatar variant */
+  imageSm?: string;
   joinedSeries?: Types.ObjectId;
   profileLevel: number;
   questionsAttempted: IAttemptedQuestion[];

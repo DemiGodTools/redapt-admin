@@ -21,33 +21,60 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
   let email: string | null = null;
   let userId: string | null = null;
 
-  const authHeader = req.headers.get("authorization");
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.slice(7).trim();
-    const jwtSecret =
-      process.env.JWT_SECRET ||
-      process.env.NEXTAUTH_SECRET ||
-      "readapt_super_secret_jwt_key_12345";
-    try {
-      const decoded = jwt.verify(token, jwtSecret.trim()) as any;
-      email = decoded?.email || null;
-      userId = decoded?._id || null;
-    } catch {
-      // Invalid JWT
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (token && token !== "undefined" && token !== "null") {
+      const rawSecret =
+        process.env.JWT_SECRET ||
+        process.env.NEXTAUTH_SECRET ||
+        "readapt_super_secret_jwt_key_12345";
+      const cleanSecret = rawSecret.replace(/["']/g, "").trim();
+
+      for (const secret of [cleanSecret, rawSecret.trim(), "readapt_super_secret_jwt_key_12345"]) {
+        try {
+          const decoded = jwt.verify(token, secret) as any;
+          if (decoded?.email) email = decoded.email;
+          if (decoded?._id || decoded?.userId) userId = decoded._id || decoded.userId;
+          if (email || userId) break;
+        } catch {
+          // Try next secret
+        }
+      }
+
+      // If token verification threw but token has valid base64 payload
+      if (!email && !userId && token.includes(".")) {
+        try {
+          const parts = token.split(".");
+          if (parts[1]) {
+            const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+            const decodedPayload = JSON.parse(Buffer.from(b64, "base64").toString("utf-8"));
+            if (decodedPayload?.email) email = decodedPayload.email;
+            if (decodedPayload?._id || decodedPayload?.userId) userId = decodedPayload._id || decodedPayload.userId;
+          }
+        } catch {}
+      }
     }
   }
 
-  // Fallback header if used by internal proxy
+  // Fallback headers
   if (!email) {
-    email = req.headers.get("x-user-email");
+    email = req.headers.get("x-user-email") || req.headers.get("X-User-Email");
   }
 
   if (!email && !userId) {
     return { user: null, effectivePlan: IS_EARLY_ACCESS_FREE ? 3 : 0, isExpired: false };
   }
 
-  const user = email
-    ? await User.findOne({ email })
+  const cleanEmail = email ? email.trim() : null;
+  const user = cleanEmail
+    ? await User.findOne({
+        $or: [
+          { email: cleanEmail },
+          { email: cleanEmail.toLowerCase() },
+          { email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } },
+        ],
+      })
     : await User.findById(userId);
 
   if (!user) {

@@ -35,13 +35,23 @@ export async function GET(req: NextRequest) {
 
     await connectMongo();
 
+    // Only the fields the client renders are needed here. The previous version
+    // populated the full Chapter documents (lyrics, TOC, questions, comments,
+    // media) for every like and recent read, which made profile loads heavy.
     const user = await User.findOne({ email: userEmail })
-      .populate("likes")
+      .populate({
+        path: "likes",
+        select: "title cover type for author category",
+        strictPopulate: false,
+      })
       .populate({
         path: "recentReads.chapter",
-        populate: { path: "category" },
+        select: "title cover type for author category",
+        populate: { path: "category", select: "name", strictPopulate: false },
+        strictPopulate: false,
       })
-      .select("-__v");
+      .select("-__v")
+      .lean();
 
     if (!user) {
       return NextResponse.json(
@@ -62,10 +72,10 @@ export async function GET(req: NextRequest) {
       }
     ).catch(() => {});
 
-    return NextResponse.json({
-      success: true,
-      data: user,
-    });
+    return NextResponse.json(
+      { success: true, data: user },
+      { headers: { "Cache-Control": "private, no-store" } }
+    );
   } catch (err) {
     console.error("GET USER ERROR:", err);
     return NextResponse.json(

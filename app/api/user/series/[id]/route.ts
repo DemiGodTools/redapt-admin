@@ -15,10 +15,21 @@ export async function GET(
     await connectMongo();
     const { id } = await params;
 
+    // Every chapter's full document used to be populated here, including
+    // lyrics/transcript/TOC/questions. The overview and next-chapter queue only
+    // need card fields, so keep the payload small and the query fast.
     const series = await Series.findById(id)
-      .populate("category")
-      .populate("chapters.content")
-      .populate("recommendationBookId")
+      .populate({ path: "category", select: "name", strictPopulate: false })
+      .populate({
+        path: "chapters.content",
+        select: "title cover type for author media total questions series",
+        strictPopulate: false,
+      })
+      .populate({
+        path: "recommendationBookId",
+        select: "title cover type for author media total category series",
+        strictPopulate: false,
+      })
       .populate({
         path: "joinedBy",
         select: "_id name userId image",
@@ -26,8 +37,6 @@ export async function GET(
       .lean();
 
     if (!series) {
-      const all = await Series.find({});
-      console.log("series not found for id ", id, " but all series are", all);
       return NextResponse.json(
         { success: false, message: "Series not found" },
         { status: 404 }

@@ -36,7 +36,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const user = email ? await User.findOne({ email }).lean() : null;
+    // These reads do not depend on each other — run them together instead of
+    // paying a separate database round-trip for each one.
+    const [user, series, thought, customBanners] = await Promise.all([
+      email ? User.findOne({ email }).lean() : Promise.resolve(null),
+      Series.find({})
+        .select(
+          "title description joinedBy chapters for cover category subCategory type author recommendationBookId recommendationText"
+        )
+        .lean(),
+      Thought.findOne({}).sort({ updatedAt: -1 }).lean(),
+      Banner.find({ isActive: true })
+        .sort({ order: 1, createdAt: -1 })
+        .populate("series")
+        .populate("chapter")
+        .lean()
+        .catch(() => [] as any[]),
+    ]);
 
     let topCategories: Types.ObjectId[] = [];
 
@@ -60,6 +76,7 @@ export async function GET(req: NextRequest) {
       ? await Chapter.find({
           category: { $in: topCategories },
         })
+          .select("-lyrics -transcript -toc -questions")
           .sort({ updatedAt: -1 })
           .limit(10)
           .populate("category")
@@ -90,8 +107,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const series = await Series.find({}).lean();
-
     const seriesChapterIds = new Set<string>();
     series.forEach((s: any) => {
       if (Array.isArray(s?.chapters)) {
@@ -113,37 +128,31 @@ export async function GET(req: NextRequest) {
       ],
     };
 
-    const trendingChapters = await Chapter.find({
-      isTrending: true,
-      ...standaloneMatch,
-    })
-      .sort({ likes: -1, updatedAt: -1 })
-      .limit(30)
-      .populate("category")
-      .lean();
-
     const userPlan = IS_EARLY_ACCESS_FREE ? 3 : ((user as any)?.subscription?.plan ?? 0);
 
-    const available = await Chapter.find({
-      for: { $lte: userPlan },
-      ...standaloneMatch,
-    })
-      .sort({ updatedAt: -1 })
-      .limit(10);
+    // Feed cards never render lyrics/transcript/TOC/questions, so leave those
+    // payload-heavy fields in the database.
+    const FEED_FIELDS = "-lyrics -transcript -toc -questions";
 
-    const thought = await Thought.findOne({}).sort({ updatedAt: -1 }).lean();
-
-    // ⚡ 1. Fetch Dynamic Custom Banners from Banner Manager
-    let customBanners: any[] = [];
-    try {
-      customBanners = await Banner.find({ isActive: true })
-        .sort({ order: 1, createdAt: -1 })
-        .populate("series")
-        .populate("chapter")
-        .lean();
-    } catch (bannerErr) {
-      console.warn("Failed to query custom banners:", bannerErr);
-    }
+    const [trendingChapters, available] = await Promise.all([
+      Chapter.find({
+        isTrending: true,
+        ...standaloneMatch,
+      })
+        .select(FEED_FIELDS)
+        .sort({ likes: -1, updatedAt: -1 })
+        .limit(30)
+        .populate("category")
+        .lean(),
+      Chapter.find({
+        for: { $lte: userPlan },
+        ...standaloneMatch,
+      })
+        .select(FEED_FIELDS)
+        .sort({ updatedAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
 
     // ⚡ 2. Curated high-impact banners in exact 3:4 format expected by BannerSlider.tsx
     const banners = customBanners.length > 0

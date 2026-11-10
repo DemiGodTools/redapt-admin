@@ -16,6 +16,43 @@ import { IS_EARLY_ACCESS_FREE } from "@/lib/verifyUserEntitlement";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function normalizeComments(comments: any[], currentUserEmail?: string | null, currentUserId?: string | null) {
+  if (!Array.isArray(comments)) return [];
+  return comments
+    .filter((c) => c && typeof c === "object" && c._id)
+    .map((c) => {
+      // If c is an unresolved ObjectId or raw ID string without comment fields
+      if (!c.text && !c.by && !c.userName) return null;
+
+      const author = typeof c.by === "object" && c.by !== null ? c.by : null;
+      const authorEmail = c.userEmail;
+      const isOwner =
+        (currentUserEmail && authorEmail && authorEmail.toLowerCase() === currentUserEmail.toLowerCase()) ||
+        (currentUserId && author?._id && author._id.toString() === currentUserId.toString()) ||
+        (currentUserId && c.by && c.by.toString() === currentUserId.toString());
+
+      const name = author?.name || c.userName || (isOwner ? "You" : "Anonymous");
+      const userId = author?.userId || c.userHandle || (isOwner ? "you" : "user");
+      const image = author?.image || c.userImage || "";
+      const profileLevel = author?.profileLevel || 1;
+
+      return {
+        ...c,
+        _id: c._id?.toString?.() || String(c._id),
+        text: String(c.text || ""),
+        createdAt: c.createdAt ? new Date(c.createdAt).toISOString() : new Date().toISOString(),
+        by: {
+          _id: author?._id ? author._id.toString() : (isOwner && currentUserId ? currentUserId : undefined),
+          name,
+          userId,
+          image,
+          profileLevel,
+        },
+      };
+    })
+    .filter(Boolean);
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -32,11 +69,15 @@ export async function GET(
     // ⚡ 1. SECURE: Get user's plan via Auth Header
     const userEmail = req.headers.get("x-user-email");
     let userPlan = IS_EARLY_ACCESS_FREE ? 3 : 0;
+    let currentUserId: string | null = null;
     
     if (userEmail) {
       const user = await User.findOne({ email: userEmail }).lean();
-      if (user && user.subscription) {
-        userPlan = Number(user.subscription.plan) || 0;
+      if (user) {
+        currentUserId = user._id ? user._id.toString() : null;
+        if (!IS_EARLY_ACCESS_FREE && user.subscription) {
+          userPlan = Number(user.subscription.plan) || 0;
+        }
       }
     }
 
@@ -74,6 +115,14 @@ export async function GET(
 
     if (!chapter) {
       return NextResponse.json({ success: false, message: "Chapter not found" }, { status: 404 });
+    }
+
+    // ⚡ Normalize comments: Prevents deleted account / recreated user anonymous comments issue
+    if (Array.isArray(chapter.comments)) {
+      chapter.comments = normalizeComments(chapter.comments, userEmail, currentUserId);
+    }
+    if (Array.isArray(chapter.qnaComments)) {
+      chapter.qnaComments = normalizeComments(chapter.qnaComments, userEmail, currentUserId);
     }
 
     // ⚡ 2. REAL-WORLD SECURITY CHECK: Data hiding

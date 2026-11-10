@@ -146,9 +146,6 @@ function CustomDropdown({ value, onChange, options, placeholder = "Select...", m
   );
 }
 
-// -------------------------------------------------------------
-// MAIN COMPONENT
-// -------------------------------------------------------------
 export default function SeriesAdminPage() {
   const router = useRouter();
   const [seriesList, setSeriesList] = useState<ISeriesItem[]>([]);

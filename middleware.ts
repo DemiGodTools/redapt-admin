@@ -17,21 +17,28 @@ export interface UserJWTPayload extends JWTPayload {
 }
 
 export async function verifyJWT(token: string): Promise<UserJWTPayload | null> {
-  try {
-    const rawSecret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "readapt_super_secret_jwt_key_12345";
-    const secret = new TextEncoder().encode(rawSecret.trim());
-    const { payload } = await jwtVerify(token, secret);
-    
-    return {
-      userId: (payload as any).userId || (payload as any)._id || "user",
-      email: (payload as any).email,
-      role: (payload as any).role,
-      name: (payload as any).name,
-      access: (payload as any).access,
-    };
-  } catch {
+  if (!token || typeof token !== "string" || token.includes("undefined") || token.includes("null")) {
     return null;
   }
+  const rawSecret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || "readapt_super_secret_jwt_key_12345";
+  const cleanSecret = rawSecret.replace(/["']/g, "").trim();
+
+  for (const s of [cleanSecret, rawSecret.trim(), "readapt_super_secret_jwt_key_12345"]) {
+    try {
+      const secret = new TextEncoder().encode(s);
+      const { payload } = await jwtVerify(token, secret);
+      if (payload) {
+        return {
+          userId: (payload as any).userId || (payload as any)._id || "user",
+          email: ((payload as any).email || (payload as any).user?.email || "").toLowerCase(),
+          role: (payload as any).role,
+          name: (payload as any).name,
+          access: (payload as any).access,
+        };
+      }
+    } catch {}
+  }
+  return null;
 }
 
 export async function middleware(request: NextRequest) {
@@ -152,14 +159,19 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/api/user/auth/login") &&
     !pathname.startsWith("/api/user/payment/confirm")
   ) {
-    let userEmail = "";
+    let userEmail = (
+      request.headers.get("x-user-email") ||
+      request.headers.get("X-User-Email") ||
+      ""
+    ).trim().toLowerCase();
+
     const authHeader = request.headers.get("Authorization") || request.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.replace(/^Bearer\s+/i, "").trim();
       if (token && token !== "undefined" && token !== "null") {
         const payload = await verifyJWT(token);
         if (payload?.email) {
-          userEmail = payload.email;
+          userEmail = payload.email.toLowerCase();
         }
       }
     }

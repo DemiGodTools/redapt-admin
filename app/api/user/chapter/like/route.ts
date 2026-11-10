@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     await connectMongo();
 
     let userEmail = req.headers.get("x-user-email");
+    let userIdFromToken: string | null = null;
 
     // Direct token verification fallback if middleware header is omitted
     if (!userEmail) {
@@ -29,12 +30,13 @@ export async function POST(req: Request) {
             const secret = new TextEncoder().encode(rawSecret.trim());
             const { payload } = await jwtVerify(token, secret);
             userEmail = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
+            userIdFromToken = ((payload as any)?._id || (payload as any)?.userId || null) as string | null;
           } catch {}
         }
       }
     }
 
-    if (!userEmail) {
+    if (!userEmail && !userIdFromToken) {
       return NextResponse.json(
         { success: false, message: "Unauthorized: Invalid or missing session" },
         { status: 401 }
@@ -50,7 +52,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await User.findOne({ email: userEmail });
+    let user = null;
+    if (userEmail) {
+      user = await User.findOne({ email: userEmail });
+    }
+    if (!user && userIdFromToken && Types.ObjectId.isValid(userIdFromToken)) {
+      user = await User.findById(userIdFromToken);
+    }
+
     if (!user) {
       return NextResponse.json(
         { success: false, message: "User not found" },
