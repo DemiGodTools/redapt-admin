@@ -28,8 +28,15 @@ export interface IUser {
   questionsAttempted: IAttemptedQuestion[];
   correctAnsStreak?: number;
   streakData?: {
-    streak: number;
-    lastDate: string;
+    currentStreak: number;
+    longestStreak: number;
+    lastActiveDate: string; // "YYYY-MM-DD"
+    todayReadingSeconds: number; // Cumulative seconds read today
+    isCompletedToday: boolean; // Has hit 240s today (4 mins)
+    lastCompletedDate?: string; // "YYYY-MM-DD" when goal was last completed
+    timezone?: string;
+    streak?: number; // legacy compatibility
+    lastDate?: string; // legacy compatibility
   };
   recentReads?: {
     chapter: any;
@@ -50,6 +57,10 @@ export interface IUser {
   lastLoginAt?: Date | null;
   lastLogoutAt?: Date | null;
   lastActiveAt?: Date | null;
+  referralCode?: string;
+  referredBy?: Types.ObjectId | null;
+  hasRedeemedReferral?: boolean;
+  totalReferralsCount?: number;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -7,6 +7,7 @@ import "@/models/Chapter.model";
 import "@/models/Category.model";
 import { Comment } from "@/models/Comment.model";
 import { purgeExpiredDeletions } from "@/lib/accountDeletion";
+import { ensureUserReferralCode } from "@/lib/referralHelper";
 
 interface GoogleTokenInfo {
   email?: string;
@@ -123,6 +124,9 @@ export async function POST(req: Request) {
         userId,
         image: picture,
       });
+      await ensureUserReferralCode(user);
+    } else if (!user.referralCode) {
+      await ensureUserReferralCode(user);
     }
 
     // Update user login status
@@ -213,6 +217,7 @@ export async function POST(req: Request) {
       token,
       expiry: Date.now() + 1000 * 60 * 60 * 24 * 30,
       user: populatedUser || user,
+      isNewUser: Boolean(isNewUser),
       wasDeletionCancelled,
     });
   } catch (error) {

@@ -40,14 +40,15 @@ export async function GET(req: NextRequest) {
         path: "recentReads.chapter",
         populate: { path: "category" },
       })
-      .select("recentReads");
+      .select("recentReads")
+      .lean();
 
     if (!user) {
       return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
     }
 
     // Format for app consumption
-    const formatted = (user.recentReads || [])
+    const formatted = ((user as any).recentReads || [])
       .filter((r: any) => Boolean(r.chapter))
       .map((r: any) => ({
         content: r.chapter,
@@ -56,7 +57,9 @@ export async function GET(req: NextRequest) {
         readAt: r.readAt ? new Date(r.readAt).toISOString() : new Date().toISOString(),
       }));
 
-    return NextResponse.json({ success: true, data: formatted });
+    const response = NextResponse.json({ success: true, data: formatted });
+    response.headers.set("Cache-Control", "private, max-age=10, stale-while-revalidate=30");
+    return response;
   } catch (error: any) {
     console.error("GET recent-reads error:", error);
     return NextResponse.json({ success: false, message: error?.message }, { status: 500 });
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
     }
 
     await connectMongo();
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select("recentReads");
     if (!user) {
       return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
     }

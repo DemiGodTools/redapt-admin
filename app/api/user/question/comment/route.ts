@@ -6,6 +6,7 @@ import { Comment } from "@/models/Comment.model";
 import { User } from "@/models/User.model";
 import { AddCommentBody } from "@/types/Body";
 import { Question } from "@/models/Question.model";
+import { Chapter } from "@/models/Chapter.model";
 
 export async function POST(req: Request) {
   try {
@@ -55,17 +56,45 @@ export async function POST(req: Request) {
     // 1️⃣ Create comment
     const comment = await Comment.create({
       by: user._id,
+      userEmail: user.email,
+      userName: user.name,
+      userHandle: user.userId,
+      userImage: user.image,
       text: text.trim(),
     });
 
-    // 2️⃣ Push comment into chapter
-    question.comments.push(comment._id);
-    await question.save();
+    // 2️⃣ Push comment into question AND parent chapter qnaComments in parallel
+    await Promise.all([
+      Question.findByIdAndUpdate(chapterId, { $push: { comments: comment._id } }),
+      Chapter.findOneAndUpdate(
+        { questions: chapterId },
+        { $push: { qnaComments: comment._id } }
+      ),
+    ]);
+
+    const populatedComment = {
+      _id: comment._id.toString(),
+      by: {
+        _id: user._id,
+        name: user.name,
+        userId: user.userId,
+        image: user.image,
+        profileLevel: user.profileLevel || 1,
+      },
+      userEmail: user.email,
+      userName: user.name,
+      userHandle: user.userId,
+      userImage: user.image,
+      text: text.trim(),
+      createdAt: comment.createdAt || new Date().toISOString(),
+      updatedAt: comment.updatedAt || new Date().toISOString(),
+    };
 
     return NextResponse.json({
       success: true,
       message: "Comment added successfully",
-      comment,
+      comment: populatedComment,
+      data: populatedComment,
     });
   } catch (error) {
     console.error("ADD COMMENT ERROR:", error);

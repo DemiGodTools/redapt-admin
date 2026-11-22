@@ -58,7 +58,8 @@ export async function POST(req: Request) {
     }
 
     const commentId = new Types.ObjectId();
-    const updateField = isQna ? "qnaComments" : "comments";
+    const isQnaTarget = Boolean(isQna || body.qna === 1 || body.qna === "1");
+    const updateField = isQnaTarget ? "qnaComments" : "comments";
 
     // ⚡ Concurrent execution: Create Comment and update Chapter in a single parallel round-trip
     const [comment, updatedChapter] = await Promise.all([
@@ -78,14 +79,21 @@ export async function POST(req: Request) {
       ),
     ]);
 
-    // If chapter wasn't found, try Question target
+    // If chapter wasn't found directly, target might be a Question ID
     if (!updatedChapter) {
-      const updatedQuestion = await Question.findByIdAndUpdate(
-        chapterId,
-        { $push: { comments: commentId } },
-        { select: { _id: 1 }, lean: true }
-      );
-      if (!updatedQuestion) {
+      const [parentChapter, updatedQuestion] = await Promise.all([
+        Chapter.findOneAndUpdate(
+          { questions: chapterId },
+          { $push: { qnaComments: commentId } },
+          { select: { _id: 1 }, lean: true }
+        ),
+        Question.findByIdAndUpdate(
+          chapterId,
+          { $push: { comments: commentId } },
+          { select: { _id: 1 }, lean: true }
+        ),
+      ]);
+      if (!parentChapter && !updatedQuestion) {
         await Comment.findByIdAndDelete(commentId).catch(() => {});
         return NextResponse.json({ success: false, message: "Content not found" }, { status: 404 });
       }

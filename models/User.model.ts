@@ -52,6 +52,13 @@ const UserSchema = new Schema<IUser>(
     ],
     correctAnsStreak: { type: Number, default: 0 },
     streakData: {
+      currentStreak: { type: Number, default: 0 },
+      longestStreak: { type: Number, default: 0 },
+      lastActiveDate: { type: String, default: "" },
+      todayReadingSeconds: { type: Number, default: 0 },
+      isCompletedToday: { type: Boolean, default: false },
+      lastCompletedDate: { type: String, default: "" },
+      timezone: { type: String, default: "UTC" },
       streak: { type: Number, default: 0 },
       lastDate: { type: String, default: "" },
     },
@@ -94,6 +101,28 @@ const UserSchema = new Schema<IUser>(
       type: Date,
       default: null,
       index: true,
+    },
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      uppercase: true,
+      trim: true,
+      index: true,
+    },
+    referredBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    hasRedeemedReferral: {
+      type: Boolean,
+      default: false,
+    },
+    totalReferralsCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
   },
   { timestamps: true, strict: false }

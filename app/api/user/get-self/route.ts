@@ -3,6 +3,8 @@ import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
 import "@/models/Chapter.model";
 import { jwtVerify } from "jose";
+import { validateAndRollStreak } from "@/lib/streakHelper";
+import { ensureUserReferralCode } from "@/lib/referralHelper";
 
 export async function GET(req: NextRequest) {
   try {
@@ -60,6 +62,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Keep streak data strictly validated & rolled over
+    const streakModified = validateAndRollStreak(user);
+
+    if (!user.referralCode) {
+      user.referralCode = await ensureUserReferralCode(user);
+    }
+
     // Update presence & active session
     User.collection.updateOne(
       { _id: user._id },
@@ -68,6 +77,7 @@ export async function GET(req: NextRequest) {
           isLoggedIn: true,
           lastActiveAt: new Date(),
           ...(user.lastLoginAt ? {} : { lastLoginAt: new Date() }),
+          ...(streakModified ? { streakData: user.streakData } : {}),
         },
       }
     ).catch(() => {});
