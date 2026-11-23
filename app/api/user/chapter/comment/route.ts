@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     const byPopulate = {
       path: "by",
-      select: "name userId image imageMd imageSm profileLevel",
+      select: "name userId image imageMd imageSm profileLevel bio profession visibility streakData",
       strictPopulate: false,
     };
 

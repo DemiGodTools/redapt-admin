@@ -113,6 +113,8 @@ export async function POST(req: Request) {
       }
     }
 
+    const isEarlyReaderPhase = process.env.EARLY_READER_PHASE !== "false";
+
     if (!user) {
       const baseId = email.split("@")[0];
       const cleaned = baseId.replace(/[^a-zA-Z]/g, "");
@@ -123,10 +125,18 @@ export async function POST(req: Request) {
         name: name || baseId,
         userId,
         image: picture,
+        isEarlyReader: isEarlyReaderPhase,
+        hasClaimedEarlyBadge: false,
       });
       await ensureUserReferralCode(user);
-    } else if (!user.referralCode) {
-      await ensureUserReferralCode(user);
+    } else {
+      if (!user.referralCode) {
+        await ensureUserReferralCode(user);
+      }
+      if (user.isEarlyReader === undefined) {
+        user.isEarlyReader = isEarlyReaderPhase;
+        await user.save();
+      }
     }
 
     // Update user login status
@@ -212,11 +222,14 @@ export async function POST(req: Request) {
       })
       .select("-__v");
 
+    const userObj = (populatedUser ? populatedUser.toObject() : user.toObject ? user.toObject() : user) as any;
+    userObj.isEarlyBadgeLive = process.env.EARLY_BADGE_LIVE === "true";
+
     return NextResponse.json({
       success: true,
       token,
       expiry: Date.now() + 1000 * 60 * 60 * 24 * 30,
-      user: populatedUser || user,
+      user: userObj,
       isNewUser: Boolean(isNewUser),
       wasDeletionCancelled,
     });

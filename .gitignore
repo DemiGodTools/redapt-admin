@@ -23,6 +23,10 @@
 # misc
 .DS_Store
 *.pem
+firebase-service-account*.json
+*firebase*.json
+service-account*.json
+google-services*.json
 
 # debug
 npm-debug.log*

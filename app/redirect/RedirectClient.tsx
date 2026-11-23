@@ -80,7 +80,7 @@ export default function RedirectClient() {
           href={`waves://app?paymentId=${paymentId}&status=${paymentStatus}&planId=${planId}`} 
           style={styles.button}
         >
-          Open Waves App
+          Open Readapt App
         </a>
       </div>
     </main>

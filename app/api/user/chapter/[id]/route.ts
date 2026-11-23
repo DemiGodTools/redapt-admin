@@ -87,12 +87,12 @@ export async function GET(
         .populate({
           path: "comments",
           strictPopulate: false,
-          populate: { path: "by", select: "name userId image profileLevel", strictPopulate: false },
+          populate: { path: "by", select: "name userId image imageMd imageSm profileLevel bio profession visibility streakData", strictPopulate: false },
         })
         .populate({
           path: "qnaComments",
           strictPopulate: false,
-          populate: { path: "by", select: "name userId image profileLevel", strictPopulate: false },
+          populate: { path: "by", select: "name userId image imageMd imageSm profileLevel bio profession visibility streakData", strictPopulate: false },
         })
         .populate({
           path: "series",

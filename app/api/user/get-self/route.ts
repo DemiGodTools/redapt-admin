@@ -82,8 +82,13 @@ export async function GET(req: NextRequest) {
       }
     ).catch(() => {});
 
+    const userObj = {
+      ...user,
+      isEarlyBadgeLive: process.env.EARLY_BADGE_LIVE === "true",
+    };
+
     return NextResponse.json(
-      { success: true, data: user },
+      { success: true, data: userObj },
       { headers: { "Cache-Control": "private, no-store" } }
     );
   } catch (err) {

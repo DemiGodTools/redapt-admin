@@ -124,6 +124,15 @@ const UserSchema = new Schema<IUser>(
       default: 0,
       min: 0,
     },
+    isEarlyReader: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    hasClaimedEarlyBadge: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true, strict: false }
 );

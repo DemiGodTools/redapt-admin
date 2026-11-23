@@ -27,7 +27,7 @@ export async function GET(
         path: "comments",
         populate: {
           path: "by",
-          select: "name userId image profileLevel",
+          select: "name userId image imageMd imageSm profileLevel bio profession visibility streakData",
         },
       })
       .lean();
