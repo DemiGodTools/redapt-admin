@@ -17,13 +17,9 @@ try {
   dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
 } catch {}
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  "mongodb+srv://manof2028_db_user:IZWbG0pie9HAEm8Y@navigate.k1qjbde.mongodb.net/staging?appName=navigate";
-
-// Direct replica-set URI fallback in case DNS SRV is blocked by local firewall/ISP
-const DIRECT_MONGODB_URI =
-  "mongodb://manof2028_db_user:IZWbG0pie9HAEm8Y@ac-vbe84nj-shard-00-00.k1qjbde.mongodb.net:27017,ac-vbe84nj-shard-00-01.k1qjbde.mongodb.net:27017,ac-vbe84nj-shard-00-02.k1qjbde.mongodb.net:27017/staging?ssl=true&replicaSet=atlas-wmub0u-shard-0&authSource=admin&appName=navigate";
+const MONGODB_URI = process.env.MONGODB_URI || "";
+const DIRECT_MONGODB_URI = process.env.DIRECT_MONGODB_URI || MONGODB_URI;
+const DB_NAME = process.env.MONGODB_DB_NAME || "staging";
 
 interface MongooseCache {
   conn: typeof mongoose | null;
@@ -47,21 +43,26 @@ async function connectMongo(): Promise<typeof mongoose> {
 
   if (!cached?.promise) {
     const connectWithOptions = async () => {
+      if (!MONGODB_URI) {
+        throw new Error("MONGODB_URI environment variable is missing!");
+      }
       try {
         return await mongoose.connect(MONGODB_URI, {
-          dbName: "staging",
+          dbName: DB_NAME,
           bufferCommands: false,
           serverSelectionTimeoutMS: 6000,
         });
       } catch (err: any) {
         if (
-          err?.message?.includes("querySrv") ||
-          err?.message?.includes("ETIMEOUT") ||
-          err?.message?.includes("ENOTFOUND")
+          (err?.message?.includes("querySrv") ||
+            err?.message?.includes("ETIMEOUT") ||
+            err?.message?.includes("ENOTFOUND")) &&
+          DIRECT_MONGODB_URI &&
+          DIRECT_MONGODB_URI !== MONGODB_URI
         ) {
           console.warn("⚠️ SRV resolution failed, falling back to direct replica-set URI...");
           return await mongoose.connect(DIRECT_MONGODB_URI, {
-            dbName: "staging",
+            dbName: DB_NAME,
             bufferCommands: false,
             serverSelectionTimeoutMS: 6000,
           });

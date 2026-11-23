@@ -8,29 +8,33 @@ import { ensureUserReferralCode } from "@/lib/referralHelper";
 
 export async function GET(req: NextRequest) {
   try {
-    let userEmail = req.headers.get("x-user-email");
+    let userEmail: string | null = null;
 
-    if (!userEmail) {
-      const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-        if (token && token !== "undefined" && token !== "null") {
-          try {
-            const rawSecret =
-              process.env.JWT_SECRET ||
-              process.env.NEXTAUTH_SECRET ||
-              "readapt_super_secret_jwt_key_12345";
-            const secret = new TextEncoder().encode(rawSecret.trim());
-            const { payload } = await jwtVerify(token, secret);
-            userEmail = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
-          } catch {}
-        }
+    // 1. Authenticate via Bearer JWT token first (Cryptographic verification)
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+      if (token && token !== "undefined" && token !== "null") {
+        try {
+          const rawSecret =
+            process.env.JWT_SECRET ||
+            process.env.NEXTAUTH_SECRET ||
+            "readapt_super_secret_jwt_key_12345";
+          const secret = new TextEncoder().encode(rawSecret.trim());
+          const { payload } = await jwtVerify(token, secret);
+          userEmail = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
+        } catch {}
       }
+    }
+
+    // 2. Controlled fallback: only allow x-user-email in development mode or if explicitly enabled
+    if (!userEmail && (process.env.NODE_ENV !== "production" || process.env.ALLOW_DEV_HEADERS === "true")) {
+      userEmail = req.headers.get("x-user-email");
     }
 
     if (!userEmail) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized (no user email)" },
+        { success: false, message: "Unauthorized: valid session token required" },
         { status: 401 }
       );
     }
