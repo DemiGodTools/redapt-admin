@@ -32,6 +32,30 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // ⚡ Server-Side Payment Gateway Verification: Verify directly with Razorpay API
+    if (paymentStatus === "paid" && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+      try {
+        const Razorpay = (await import("razorpay")).default;
+        const rzp = new Razorpay({
+          key_id: process.env.RAZORPAY_KEY_ID,
+          key_secret: process.env.RAZORPAY_KEY_SECRET,
+        });
+        const paymentRecord: any = await rzp.payments.fetch(paymentId);
+        if (!paymentRecord || (paymentRecord.status !== "captured" && paymentRecord.status !== "authorized")) {
+          return NextResponse.json(
+            { success: false, error: "Payment was not captured by Razorpay gateway" },
+            { status: 400 }
+          );
+        }
+      } catch (rzpErr: any) {
+        console.error("Razorpay verification failed:", rzpErr);
+        return NextResponse.json(
+          { success: false, error: "Payment verification failed with gateway" },
+          { status: 400 }
+        );
+      }
+    }
+
     const updatedPayment = await Payment.findOneAndUpdate(
       { byUser: userId, status: "pending" },
       {

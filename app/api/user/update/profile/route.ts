@@ -2,24 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { uploadBufferToB2 } from "@/lib/b2";
 import { User } from "@/models/User.model";
 import connectMongo from "@/lib/connectMongo";
+import { getAuthenticatedUser } from "@/lib/userAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser?.email) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized: valid session token required" },
+        { status: 401 }
+      );
+    }
+    const userEmail = authUser.email;
+
     const formData = await req.formData();
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
-    }
-
-    const userEmail = req.headers.get("x-user-email");
-    if (!userEmail) {
-      return NextResponse.json(
-        { success: false, message: "Unauthorized (no user email)" },
-        { status: 401 }
-      );
     }
 
     const arrayBuffer = await file.arrayBuffer();

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
-import { jwtVerify } from "jose";
+import { getAuthenticatedUser } from "@/lib/userAuth";
 import {
   DAILY_TARGET_SECONDS,
   getLocalDateString,
@@ -10,25 +10,8 @@ import {
 } from "@/lib/streakHelper";
 
 async function getAuthenticatedUserEmail(req: NextRequest): Promise<string | null> {
-  let userEmail = req.headers.get("x-user-email");
-  if (userEmail) return userEmail;
-
-  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-    if (token && token !== "undefined" && token !== "null") {
-      try {
-        const rawSecret =
-          process.env.JWT_SECRET ||
-          process.env.NEXTAUTH_SECRET ||
-          "readapt_super_secret_jwt_key_12345";
-        const secret = new TextEncoder().encode(rawSecret.trim());
-        const { payload } = await jwtVerify(token, secret);
-        userEmail = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
-      } catch {}
-    }
-  }
-  return userEmail;
+  const authUser = await getAuthenticatedUser(req);
+  return authUser?.email || null;
 }
 
 export async function GET(req: NextRequest) {

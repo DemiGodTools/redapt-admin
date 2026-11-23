@@ -3,39 +3,24 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
 import { generateDeletionToken, maskEmail, purgeExpiredDeletions } from "@/lib/accountDeletion";
-import { verifyJWT } from "@/middleware";
+import { getAuthenticatedUser } from "@/lib/userAuth";
 
 export async function POST(req: Request) {
   try {
     await connectMongo();
     await purgeExpiredDeletions().catch(() => {});
 
-    let email = req.headers.get("x-user-email");
-
-    // 1. Direct Bearer token parsing fallback
-    if (!email) {
-      const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-        const payload = await verifyJWT(token);
-        if (payload?.email) {
-          email = payload.email;
-        }
-      }
-    }
-
-    // 2. Body email fallback (authenticated app client provides user.email)
-    const body = await req.json().catch(() => ({}));
-    if (!email && body?.email) {
-      email = String(body.email).trim().toLowerCase();
-    }
+    const authUser = await getAuthenticatedUser(req);
+    let email = authUser?.email || null;
 
     if (!email) {
       return NextResponse.json(
-        { success: false, message: "User email or valid session is required." },
-        { status: 400 }
+        { success: false, message: "Unauthorized: valid session token required." },
+        { status: 401 }
       );
     }
+
+    const body = await req.json().catch(() => ({}));
 
     const cleanEmail = email.trim().toLowerCase();
     const user = await User.findOne({ email: cleanEmail });

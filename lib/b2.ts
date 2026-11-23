@@ -9,12 +9,21 @@ const region = process.env.B2_REGION || defaultRegion;
 
 export const B2_BUCKET = process.env.B2_BUCKET_NAME || "readapt-media";
 
+const b2KeyId = process.env.B2_KEY_ID || "";
+const b2AppKey = process.env.B2_APPLICATION_KEY || "";
+
+if (!b2KeyId || !b2AppKey) {
+  if (process.env.NODE_ENV === "production") {
+    console.warn("⚠️ Warning: B2_KEY_ID or B2_APPLICATION_KEY environment variables are missing!");
+  }
+}
+
 export const b2Client = new S3Client({
   endpoint: `https://${cleanEndpoint}`,
   region: region,
   credentials: {
-    accessKeyId: process.env.B2_KEY_ID || "003db1d5046e5660000000002",
-    secretAccessKey: process.env.B2_APPLICATION_KEY || "K0037vNP5RopCBmn73pjNtu9YzzO14Q",
+    accessKeyId: b2KeyId,
+    secretAccessKey: b2AppKey,
   },
 });
 

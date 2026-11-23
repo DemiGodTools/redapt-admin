@@ -137,5 +137,9 @@ const UserSchema = new Schema<IUser>(
   { timestamps: true, strict: false }
 );
 
+// Compound and analytics indexes
+UserSchema.index({ createdAt: -1 });
+UserSchema.index({ deletionStatus: 1, deletionScheduledAt: 1 });
+
 export const User =
   models.User || model<IUser>("User", UserSchema);

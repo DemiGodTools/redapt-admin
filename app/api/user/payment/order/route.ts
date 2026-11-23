@@ -19,6 +19,10 @@ export async function POST(req: NextRequest) {
 
     const razorpay = getRazorpayClient();
 
+    const baseUrl = process.env.NEXTAUTH_URL
+      ? process.env.NEXTAUTH_URL.replace(/\/+$/, "")
+      : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://redapt-admin.vercel.app");
+
     const paymentLink = await razorpay.paymentLink.create({
       amount: Math.round(Number(amount) * 100),
       currency: 'INR',
@@ -28,7 +32,7 @@ export async function POST(req: NextRequest) {
         name: user.name,
         email: user.email,
       },
-      callback_url: `https://redapt-admin-sand.vercel.app/redirect?userId=${user._id}&planId=${planId}`,
+      callback_url: `${baseUrl}/redirect?userId=${user._id}&planId=${planId}`,
       callback_method: 'get',
     });
 
