@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     currentUser.usernameLastChangedAt = new Date();
 
     const photoToSet = (typeof image === "string" && image.trim()) || (typeof profilePhoto === "string" && profilePhoto.trim());
-    if (photoToSet) {
+    if (photoToSet && !photoToSet.startsWith("file://") && !photoToSet.startsWith("content://")) {
       currentUser.image = photoToSet;
     }
 
