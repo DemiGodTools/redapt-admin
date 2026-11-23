@@ -5,6 +5,9 @@ import { Referral } from "@/models/Referral.model";
 import { jwtVerify } from "jose";
 import { ensureUserReferralCode } from "@/lib/referralHelper";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface AuthIdentifier {
   email?: string | null;
   userId?: string | null;
@@ -77,7 +80,7 @@ export async function GET(req: NextRequest) {
     const referralDocs = await Referral.find({ referrer: user._id })
       .sort({ createdAt: -1 })
       .limit(50)
-      .populate("referee", "name userId image imageSm createdAt")
+      .populate("referee", "name userId image imageSm imageMd profilePhoto createdAt")
       .lean();
 
     const referralsList = referralDocs
@@ -86,16 +89,30 @@ export async function GET(req: NextRequest) {
         id: ref._id.toString(),
         name: ref.referee.name || "Reader",
         userId: ref.referee.userId || "",
-        image: ref.referee.image || ref.referee.imageSm || null,
+        image:
+          ref.referee.image ||
+          ref.referee.imageSm ||
+          ref.referee.imageMd ||
+          ref.referee.profilePhoto ||
+          null,
         joinedAt: ref.createdAt,
       }));
 
-    return NextResponse.json({
-      success: true,
-      referralCode,
-      totalCount: user.totalReferralsCount || referralsList.length,
-      referrals: referralsList,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        referralCode,
+        totalCount: user.totalReferralsCount || referralsList.length,
+        referrals: referralsList,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (error: any) {
     console.error("Referral stats error:", error);
     return NextResponse.json(
