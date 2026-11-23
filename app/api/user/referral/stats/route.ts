@@ -76,27 +76,21 @@ export async function GET(req: NextRequest) {
     // Guarantee the user has a permanent referral code
     const referralCode = await ensureUserReferralCode(user);
 
-    // Efficient lookup of referred friends (paginated / limited to top 50)
-    const referralDocs = await Referral.find({ referrer: user._id })
+    // Fast, lightweight lookup of referred friends (no heavy image joins)
+    const referralDocs = await Referral.find({
+      $or: [{ referrer: user._id }, { referrer: user._id.toString() }],
+    })
       .sort({ createdAt: -1 })
-      .limit(50)
-      .populate("referee", "name userId image imageSm imageMd profilePhoto createdAt")
+      .limit(100)
+      .populate("referee", "name userId createdAt")
       .lean();
 
-    const referralsList = referralDocs
-      .filter((ref: any) => Boolean(ref.referee))
-      .map((ref: any) => ({
-        id: ref._id.toString(),
-        name: ref.referee.name || "Reader",
-        userId: ref.referee.userId || "",
-        image:
-          ref.referee.image ||
-          ref.referee.imageSm ||
-          ref.referee.imageMd ||
-          ref.referee.profilePhoto ||
-          null,
-        joinedAt: ref.createdAt,
-      }));
+    const referralsList = referralDocs.map((ref: any) => ({
+      id: ref._id.toString(),
+      name: ref.referee?.name || ref.refereeName || "Reader",
+      userId: ref.referee?.userId || ref.refereeUserId || "",
+      joinedAt: ref.createdAt,
+    }));
 
     return NextResponse.json(
       {

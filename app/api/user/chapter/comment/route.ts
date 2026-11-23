@@ -134,37 +134,65 @@ export async function POST(req: NextRequest) {
     const isQnaTarget = Boolean(isQna || body.qna === 1 || body.qna === "1");
     const updateField = isQnaTarget ? "qnaComments" : "comments";
 
-    // ⚡ Concurrent execution: Create Comment and update Chapter in a single parallel round-trip
+    const commentPromise = Comment.create({
+      _id: commentId,
+      by: user._id,
+      userEmail: user.email,
+      userName: user.name || "Reader",
+      userHandle: user.userId || user.name || "user",
+      userImage: user.image || "",
+      text: trimmedText,
+    });
+
+    const pushToChapter = async (filter: any, field: string) => {
+      try {
+        return await Chapter.findOneAndUpdate(
+          filter,
+          { $push: { [field]: commentId } },
+          { select: { _id: 1 }, lean: true }
+        );
+      } catch (err: any) {
+        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
+          return await Chapter.findOneAndUpdate(
+            filter,
+            { $set: { [field]: [commentId] } },
+            { select: { _id: 1 }, lean: true }
+          );
+        }
+        throw err;
+      }
+    };
+
+    const pushToQuestion = async (qId: any) => {
+      try {
+        return await Question.findByIdAndUpdate(
+          qId,
+          { $push: { comments: commentId } },
+          { select: { _id: 1 }, lean: true }
+        );
+      } catch (err: any) {
+        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
+          return await Question.findByIdAndUpdate(
+            qId,
+            { $set: { comments: [commentId] } },
+            { select: { _id: 1 }, lean: true }
+          );
+        }
+        throw err;
+      }
+    };
+
+    // ⚡ Concurrent execution: Create Comment and update Chapter safely
     const [comment, updatedChapter] = await Promise.all([
-      Comment.create({
-        _id: commentId,
-        by: user._id,
-        userEmail: user.email,
-        userName: user.name,
-        userHandle: user.userId,
-        userImage: user.image,
-        text: trimmedText,
-      }),
-      Chapter.findByIdAndUpdate(
-        chapterId,
-        { $push: { [updateField]: commentId } },
-        { select: { _id: 1 }, lean: true }
-      ),
+      commentPromise,
+      pushToChapter({ _id: chapterId }, updateField),
     ]);
 
     // If chapter wasn't found directly, target might be a Question ID
     if (!updatedChapter) {
       const [parentChapter, updatedQuestion] = await Promise.all([
-        Chapter.findOneAndUpdate(
-          { questions: chapterId },
-          { $push: { qnaComments: commentId } },
-          { select: { _id: 1 }, lean: true }
-        ),
-        Question.findByIdAndUpdate(
-          chapterId,
-          { $push: { comments: commentId } },
-          { select: { _id: 1 }, lean: true }
-        ),
+        pushToChapter({ questions: chapterId }, "qnaComments"),
+        pushToQuestion(chapterId),
       ]);
       if (!parentChapter && !updatedQuestion) {
         // Rollback created comment if target doesn't exist

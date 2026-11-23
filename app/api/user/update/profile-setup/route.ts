@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
+import { Referral } from "@/models/Referral.model";
 import { jwtVerify } from "jose";
 import { logActivity } from "@/lib/activityLogger";
 
@@ -151,6 +152,14 @@ export async function POST(req: NextRequest) {
     }
 
     await currentUser.save();
+
+    // Update snapshot in Referral collection if this user was referred
+    try {
+      await Referral.updateOne(
+        { referee: currentUser._id },
+        { $set: { refereeName: cleanName, refereeUserId: cleanUsername } }
+      );
+    } catch {}
 
     const populatedUser = await User.findById(currentUser._id)
       .populate("likes")

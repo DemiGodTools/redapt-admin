@@ -11,7 +11,7 @@ import { Chapter } from "@/models/Chapter.model";
 import { Comment } from "@/models/Comment.model";
 import { Question } from "@/models/Question.model";
 import { User } from "@/models/User.model";
-import { IS_EARLY_ACCESS_FREE } from "@/lib/verifyUserEntitlement";
+import { IS_EARLY_ACCESS_FREE, getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -66,20 +66,11 @@ export async function GET(
       return NextResponse.json({ success: false, message: "Invalid chapter id" }, { status: 400 });
     }
 
-    // ⚡ 1. SECURE: Get user's plan via Auth Header
-    const userEmail = req.headers.get("x-user-email");
-    let userPlan = IS_EARLY_ACCESS_FREE ? 3 : 0;
-    let currentUserId: string | null = null;
-    
-    if (userEmail) {
-      const user = await User.findOne({ email: userEmail }).lean();
-      if (user) {
-        currentUserId = user._id ? user._id.toString() : null;
-        if (!IS_EARLY_ACCESS_FREE && user.subscription) {
-          userPlan = Number(user.subscription.plan) || 0;
-        }
-      }
-    }
+    // ⚡ 1. SECURE: Get user & entitlement via robust auth helper
+    const { user, effectivePlan } = await getVerifiedUserAndEntitlement(req);
+    const userPlan = effectivePlan;
+    const currentUserId = user?._id ? user._id.toString() : null;
+    const userEmail = user?.email || null;
 
     const chapterObjectId = new Types.ObjectId(id);
 
@@ -197,6 +188,17 @@ export async function GET(
     } else {
       chapter.questions = [];
     }
+
+    // ⚡ Attach current user's liked status accurately
+    let isLiked = false;
+    if (user && Array.isArray(user.likes)) {
+      const targetStr = String(chapter._id || id);
+      isLiked = user.likes.some((lId: any) => {
+        const str = typeof lId === "string" ? lId : String(lId?._id || lId?.$oid || "");
+        return str === targetStr;
+      });
+    }
+    chapter.isLiked = isLiked;
 
     return NextResponse.json(
       { success: true, data: chapter },

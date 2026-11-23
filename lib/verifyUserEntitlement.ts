@@ -66,16 +66,24 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
     return { user: null, effectivePlan: IS_EARLY_ACCESS_FREE ? 3 : 0, isExpired: false };
   }
 
+  let user = null;
   const cleanEmail = email ? email.trim() : null;
-  const user = cleanEmail
-    ? await User.findOne({
-        $or: [
-          { email: cleanEmail },
-          { email: cleanEmail.toLowerCase() },
-          { email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } },
-        ],
-      })
-    : await User.findById(userId);
+  if (cleanEmail) {
+    user = await User.findOne({
+      $or: [
+        { email: cleanEmail },
+        { email: cleanEmail.toLowerCase() },
+        { email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } },
+      ],
+    });
+  }
+
+  // Robust fallback: if email lookup returned null, fall back to userId
+  if (!user && userId) {
+    try {
+      user = await User.findById(userId);
+    } catch {}
+  }
 
   if (!user) {
     return { user: null, effectivePlan: IS_EARLY_ACCESS_FREE ? 3 : 0, isExpired: false };

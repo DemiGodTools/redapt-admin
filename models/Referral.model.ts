@@ -3,6 +3,8 @@ import { Schema, model, models, Types, Document } from "mongoose";
 export interface IReferral extends Document {
   referrer: Types.ObjectId;
   referee: Types.ObjectId;
+  refereeName?: string | null;
+  refereeUserId?: string | null;
   codeUsed: string;
   status: "COMPLETED" | "PENDING";
   deviceId?: string | null;
@@ -25,6 +27,16 @@ const ReferralSchema = new Schema<IReferral>(
       required: true,
       unique: true, // One successful referral per user (strictly enforced)
       index: true,
+    },
+    refereeName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    refereeUserId: {
+      type: String,
+      default: null,
+      trim: true,
     },
     codeUsed: {
       type: String,

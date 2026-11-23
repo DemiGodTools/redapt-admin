@@ -7,15 +7,16 @@ import { User } from "@/models/User.model";
 import { AddCommentBody } from "@/types/Body";
 import { Question } from "@/models/Question.model";
 import { Chapter } from "@/models/Chapter.model";
+import { getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
 
 export async function POST(req: Request) {
   try {
     await connectMongo();
 
-    const userEmail = req.headers.get("x-user-email");
-    if (!userEmail) {
+    const { user } = await getVerifiedUserAndEntitlement(req);
+    if (!user) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized" },
+        { success: false, message: "Unauthorized: Please log in to comment" },
         { status: 401 }
       );
     }
@@ -37,14 +38,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await User.findOne({ email: userEmail });
-    if (!user) {
-      return NextResponse.json(
-        { success: false, message: "User not found" },
-        { status: 404 }
-      );
-    }
-
     const question = await Question.findById(chapterId);
     if (!question) {
       return NextResponse.json(
@@ -57,20 +50,40 @@ export async function POST(req: Request) {
     const comment = await Comment.create({
       by: user._id,
       userEmail: user.email,
-      userName: user.name,
-      userHandle: user.userId,
-      userImage: user.image,
+      userName: user.name || "Reader",
+      userHandle: user.userId || user.name || "user",
+      userImage: user.image || "",
       text: text.trim(),
     });
 
-    // 2️⃣ Push comment into question AND parent chapter qnaComments in parallel
-    await Promise.all([
-      Question.findByIdAndUpdate(chapterId, { $push: { comments: comment._id } }),
-      Chapter.findOneAndUpdate(
-        { questions: chapterId },
-        { $push: { qnaComments: comment._id } }
-      ),
-    ]);
+    // 2️⃣ Push comment safely into question AND parent chapter qnaComments in parallel
+    const pushToQuestion = async () => {
+      try {
+        await Question.findByIdAndUpdate(chapterId, { $push: { comments: comment._id } });
+      } catch (err: any) {
+        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
+          await Question.findByIdAndUpdate(chapterId, { $set: { comments: [comment._id] } });
+        }
+      }
+    };
+
+    const pushToChapter = async () => {
+      try {
+        await Chapter.findOneAndUpdate(
+          { questions: chapterId },
+          { $push: { qnaComments: comment._id } }
+        );
+      } catch (err: any) {
+        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
+          await Chapter.findOneAndUpdate(
+            { questions: chapterId },
+            { $set: { qnaComments: [comment._id] } }
+          );
+        }
+      }
+    };
+
+    await Promise.all([pushToQuestion(), pushToChapter()]);
 
     const populatedComment = {
       _id: comment._id.toString(),

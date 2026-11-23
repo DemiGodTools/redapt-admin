@@ -131,6 +131,8 @@ export async function POST(req: NextRequest) {
       await Referral.create({
         referrer: referrer._id,
         referee: referee._id,
+        refereeName: referee.name || referee.userId,
+        refereeUserId: referee.userId,
         codeUsed: cleanCode,
         status: "COMPLETED",
         deviceId: deviceId || null,
