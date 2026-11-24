@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     await connectMongo();
 
     const body = await req.json();
-    const { title, message, imageUrl, targetScreen, extraData } = body;
+    const { title, message, imageUrl, targetScreen, extraData, isSticky, countdownMinutes } = body;
 
     if (!title || typeof title !== "string" || !title.trim()) {
       return NextResponse.json(
@@ -30,9 +30,31 @@ export async function POST(req: NextRequest) {
     const cleanBody = message.trim();
     const cleanImage = (imageUrl || "").trim();
     const cleanScreen = (targetScreen || "Home").trim();
+    const stickyBool = Boolean(isSticky);
+    const countdownTarget = countdownMinutes && Number(countdownMinutes) > 0
+      ? String(Date.now() + Number(countdownMinutes) * 60 * 1000)
+      : "";
 
     // Prepare FCM Topic Message payload
     const messaging = getFirebaseMessaging();
+
+    const fcmDataPayload: Record<string, string> = {
+      targetScreen: cleanScreen,
+      title: cleanTitle,
+      body: cleanBody,
+      ...(cleanImage ? { image: cleanImage } : {}),
+      ...(stickyBool ? { isSticky: "true" } : {}),
+      ...(countdownTarget ? { countdownTarget } : {}),
+      ...(typeof extraData === "object" && extraData !== null ? extraData : {}),
+    };
+
+    const fcmAndroidNotification: any = {
+      sound: "default",
+      channelId: stickyBool ? "sticky_alerts" : "default",
+      ...(stickyBool ? { sticky: true } : {}),
+      ...(cleanImage ? { imageUrl: cleanImage } : {}),
+      ...(countdownTarget ? { eventTimestamp: new Date(Number(countdownTarget)) } : {}),
+    };
 
     const fcmPayload: any = {
       topic: "all_users",
@@ -41,20 +63,10 @@ export async function POST(req: NextRequest) {
         body: cleanBody,
         ...(cleanImage ? { imageUrl: cleanImage } : {}),
       },
-      data: {
-        targetScreen: cleanScreen,
-        title: cleanTitle,
-        body: cleanBody,
-        ...(cleanImage ? { image: cleanImage } : {}),
-        ...(typeof extraData === "object" && extraData !== null ? extraData : {}),
-      },
+      data: fcmDataPayload,
       android: {
         priority: "high",
-        notification: {
-          sound: "default",
-          channelId: "default",
-          ...(cleanImage ? { imageUrl: cleanImage } : {}),
-        },
+        notification: fcmAndroidNotification,
       },
     };
 
@@ -107,20 +119,10 @@ export async function POST(req: NextRequest) {
                 body: cleanBody,
                 ...(cleanImage ? { imageUrl: cleanImage } : {}),
               },
-              data: {
-                targetScreen: cleanScreen,
-                title: cleanTitle,
-                body: cleanBody,
-                ...(cleanImage ? { image: cleanImage } : {}),
-                ...(typeof extraData === "object" && extraData !== null ? extraData : {}),
-              },
+              data: fcmDataPayload,
               android: {
                 priority: "high",
-                notification: {
-                  sound: "default",
-                  channelId: "default",
-                  ...(cleanImage ? { imageUrl: cleanImage } : {}),
-                },
+                notification: fcmAndroidNotification,
               },
             });
             fcmDirectSuccessCount += multicastRes.successCount;

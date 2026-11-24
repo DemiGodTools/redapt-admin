@@ -24,6 +24,17 @@ export default function NotificationsAdminPage() {
   const [targetId, setTargetId] = useState("");
   const [sending, setSending] = useState(false);
 
+  // Advanced Notification Variants
+  const [isSticky, setIsSticky] = useState(false);
+  const [isCountdown, setIsCountdown] = useState(false);
+  const [countdownMinutes, setCountdownMinutes] = useState(60);
+
+  // Targets (Series / Books) Loaded On-Demand
+  const [seriesList, setSeriesList] = useState<{ id: string; title: string }[]>([]);
+  const [booksList, setBooksList] = useState<{ id: string; title: string; type: string }[]>([]);
+  const [loadingTargets, setLoadingTargets] = useState(false);
+  const [targetsLoaded, setTargetsLoaded] = useState(false);
+
   // Direct B2 Upload State
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -34,6 +45,32 @@ export default function NotificationsAdminPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const loadTargetsIfNeeded = async () => {
+    if (targetsLoaded || loadingTargets) return;
+    setLoadingTargets(true);
+    try {
+      const res = await fetch("/api/admin/notifications/targets");
+      const json = await res.json();
+      if (json.success) {
+        setSeriesList(json.series || []);
+        setBooksList(json.books || []);
+        setTargetsLoaded(true);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setLoadingTargets(false);
+    }
+  };
+
+  const handleTargetScreenChange = (screen: string) => {
+    setTargetScreen(screen);
+    setTargetId("");
+    if (screen === "SeriesOverview" || screen === "ReadBook" || screen === "AudioRdr") {
+      loadTargetsIfNeeded();
+    }
+  };
 
   const fetchHistory = async () => {
     setLoadingHistory(true);
@@ -129,6 +166,8 @@ export default function NotificationsAdminPage() {
           imageUrl: imageUrl.trim() || undefined,
           targetScreen,
           extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
+          isSticky,
+          countdownMinutes: isCountdown ? countdownMinutes : undefined,
         }),
       });
 
@@ -139,6 +178,8 @@ export default function NotificationsAdminPage() {
         setMessage("");
         setImageUrl("");
         setTargetId("");
+        setIsSticky(false);
+        setIsCountdown(false);
         if (showHistory) {
           fetchHistory();
         }
@@ -358,10 +399,7 @@ export default function NotificationsAdminPage() {
                 </label>
                 <select
                   value={targetScreen}
-                  onChange={(e) => {
-                    setTargetScreen(e.target.value);
-                    setTargetId("");
-                  }}
+                  onChange={(e) => handleTargetScreenChange(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "12px 14px",
@@ -376,39 +414,165 @@ export default function NotificationsAdminPage() {
                 >
                   <option value="Home">Home Feed (Main Screen)</option>
                   <option value="Series">Series & Books Catalog (All Series)</option>
-                  <option value="SeriesOverview">Specific Series Overview (Needs Series ID)</option>
-                  <option value="ReadBook">Direct Book Reader (Needs Book ID)</option>
-                  <option value="AudioRdr">Direct Audio Reader (Needs Book ID)</option>
+                  <option value="SeriesOverview">Specific Series (Choose from List)</option>
+                  <option value="ReadBook">Direct Book Reader (Choose Book)</option>
+                  <option value="AudioRdr">Direct Audio Player (Choose Audio Book)</option>
                   <option value="DailyRewards">Daily Rewards & Streak</option>
                   <option value="Subscription">Upgrade / Subscription Plan</option>
                 </select>
               </div>
 
-              {/* Optional Target ID for Deep Linking */}
-              {(targetScreen === "SeriesOverview" || targetScreen === "ReadBook" || targetScreen === "AudioRdr") && (
+              {/* Selection for Series */}
+              {targetScreen === "SeriesOverview" && (
                 <div>
-                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#5EEAD4", marginBottom: "6px" }}>
-                    {targetScreen === "SeriesOverview" ? "Target Series ID" : "Target Book ID"}
-                  </label>
-                  <input
-                    type="text"
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#5EEAD4" }}>
+                      Select Target Series
+                    </label>
+                    {loadingTargets && <span style={{ fontSize: "11px", color: "#00D2B4" }}>Loading series...</span>}
+                  </div>
+                  <select
                     value={targetId}
                     onChange={(e) => setTargetId(e.target.value)}
-                    placeholder={targetScreen === "SeriesOverview" ? "e.g. 66df879..." : "e.g. 66e2c34..."}
                     style={{
                       width: "100%",
-                      padding: "11px 14px",
+                      padding: "12px 14px",
                       backgroundColor: "#070B0D",
                       border: "1px solid rgba(0, 210, 180, 0.4)",
                       borderRadius: "10px",
                       color: "#FFFFFF",
-                      fontSize: "13.5px",
+                      fontSize: "14px",
                       outline: "none",
+                      cursor: "pointer",
                     }}
                     required
-                  />
+                  >
+                    <option value="">-- Choose Series Title --</option>
+                    {seriesList.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
+
+              {/* Selection for Books (PDF or Audio) */}
+              {(targetScreen === "ReadBook" || targetScreen === "AudioRdr") && (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                    <label style={{ fontSize: "13px", fontWeight: 600, color: "#5EEAD4" }}>
+                      {targetScreen === "AudioRdr" ? "Select Audio Book" : "Select Reading Book"}
+                    </label>
+                    {loadingTargets && <span style={{ fontSize: "11px", color: "#00D2B4" }}>Loading books...</span>}
+                  </div>
+                  <select
+                    value={targetId}
+                    onChange={(e) => setTargetId(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "12px 14px",
+                      backgroundColor: "#070B0D",
+                      border: "1px solid rgba(0, 210, 180, 0.4)",
+                      borderRadius: "10px",
+                      color: "#FFFFFF",
+                      fontSize: "14px",
+                      outline: "none",
+                      cursor: "pointer",
+                    }}
+                    required
+                  >
+                    <option value="">-- Choose Book Title --</option>
+                    {booksList
+                      .filter((b) => (targetScreen === "AudioRdr" ? b.type === "audio" : true))
+                      .map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.title} [{b.type.toUpperCase()}]
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Advanced Notification Variants (Sticky / Ongoing & Countdown) */}
+              <div
+                style={{
+                  padding: "16px",
+                  backgroundColor: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  borderRadius: "12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#D1D5DB" }}>
+                  Advanced Notification Variants:
+                </span>
+
+                {/* Non-Dismissable (Sticky) */}
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={isSticky}
+                    onChange={(e) => setIsSticky(e.target.checked)}
+                    style={{ accentColor: "#00D2B4", marginTop: "3px", width: "16px", height: "16px" }}
+                  />
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: isSticky ? "#5EEAD4" : "#E5E7EB" }}>
+                      🔒 Non-Dismissable Notification (Ongoing Sticky Alert)
+                    </span>
+                    <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "#9CA3AF" }}>
+                      User cannot swipe away this notification. It stays pinned on top until opened.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Countdown Chronometer */}
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={isCountdown}
+                    onChange={(e) => setIsCountdown(e.target.checked)}
+                    style={{ accentColor: "#00D2B4", marginTop: "3px", width: "16px", height: "16px" }}
+                  />
+                  <div>
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: isCountdown ? "#5EEAD4" : "#E5E7EB" }}>
+                      ⏱️ Active Countdown Timer (Flash Sale / Streak Expiry)
+                    </span>
+                    <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "#9CA3AF" }}>
+                      Android renders a live ticking countdown in the shade (e.g. "Expires in 01:59:45").
+                    </p>
+                  </div>
+                </label>
+
+                {isCountdown && (
+                  <div style={{ marginTop: "4px", paddingLeft: "26px" }}>
+                    <label style={{ fontSize: "12px", color: "#5EEAD4", display: "block", marginBottom: "4px" }}>
+                      Countdown Duration (Minutes from now):
+                    </label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={1440}
+                      value={countdownMinutes}
+                      onChange={(e) => setCountdownMinutes(Number(e.target.value))}
+                      style={{
+                        width: "140px",
+                        padding: "8px 12px",
+                        backgroundColor: "#070B0D",
+                        border: "1px solid rgba(0, 210, 180, 0.4)",
+                        borderRadius: "8px",
+                        color: "#FFFFFF",
+                        fontSize: "13px",
+                      }}
+                    />
+                    <span style={{ fontSize: "11px", color: "#9CA3AF", marginLeft: "10px" }}>
+                      ≈ {(countdownMinutes / 60).toFixed(1)} hours
+                    </span>
+                  </div>
+                )}
+              </div>
 
               {/* Action Button */}
               <button
@@ -468,7 +632,7 @@ export default function NotificationsAdminPage() {
                   borderRadius: "6px",
                 }}
               >
-                System Shade
+                {isSticky ? "🔒 Ongoing" : "Standard"}
               </span>
             </div>
 
@@ -487,25 +651,42 @@ export default function NotificationsAdminPage() {
               }}
             >
               {/* Header inside Notification: App Icon + App Name + Timestamp */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
-                <div
-                  style={{
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "6px",
-                    backgroundColor: "#00D2B4",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "12px",
-                    fontWeight: 900,
-                    color: "#070B0D",
-                  }}
-                >
-                  R
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div
+                    style={{
+                      width: "22px",
+                      height: "22px",
+                      borderRadius: "6px",
+                      backgroundColor: "#00D2B4",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "12px",
+                      fontWeight: 900,
+                      color: "#070B0D",
+                    }}
+                  >
+                    R
+                  </div>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#F3F4F6" }}>Readapt</span>
+                  <span style={{ fontSize: "11px", color: "#9CA3AF" }}>• Just now</span>
                 </div>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#F3F4F6" }}>Readapt</span>
-                <span style={{ fontSize: "11px", color: "#9CA3AF" }}>• Just now</span>
+
+                {isCountdown && (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#FF5252",
+                      fontWeight: 800,
+                      backgroundColor: "rgba(255, 82, 82, 0.15)",
+                      padding: "2px 6px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    ⏱️ Ends in {Math.floor(countdownMinutes / 60)}h {countdownMinutes % 60}m
+                  </span>
+                )}
               </div>
 
               {/* Title & Body */}
@@ -566,7 +747,7 @@ export default function NotificationsAdminPage() {
                     borderRadius: "6px",
                   }}
                 >
-                  Open: {targetScreen} {targetId ? `(${targetId.slice(0, 8)}...)` : ""}
+                  Open: {targetScreen}
                 </span>
               </div>
             </div>
