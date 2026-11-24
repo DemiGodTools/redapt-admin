@@ -35,20 +35,9 @@ export async function POST(req: NextRequest) {
       ? String(Date.now() + Number(countdownMinutes) * 60 * 1000)
       : "";
 
-    // If countdown badge is requested, prefix the title so ALL Android versions display it clearly
     const effectivePrefix = (countdownPrefix || "Launching in").trim();
-    let displayTitle = cleanTitle;
-    if (includeBadgeInTitle && countdownMinutes && Number(countdownMinutes) > 0) {
-      const totalM = Number(countdownMinutes);
-      const d = Math.floor(totalM / 1440);
-      const h = Math.floor((totalM % 1440) / 60);
-      const m = totalM % 60;
-      let durStr = "";
-      if (d > 0) durStr = `${d}d ${h}h`;
-      else if (h > 0) durStr = `${h}h ${m}m`;
-      else durStr = `${m}m`;
-      displayTitle = `[${effectivePrefix} ${durStr}] ${cleanTitle}`;
-    }
+    // Use clean title directly without static square bracket text, since Notifee renders dynamic chronometer natively
+    const displayTitle = cleanTitle;
 
     // Prepare FCM Topic Message payload
     const messaging = getFirebaseMessaging();
@@ -60,12 +49,13 @@ export async function POST(req: NextRequest) {
       ...(cleanImage ? { image: cleanImage } : {}),
       ...(stickyBool ? { isSticky: "true" } : {}),
       ...(countdownTarget ? { countdownTarget } : {}),
+      ...(effectivePrefix ? { countdownPrefix: effectivePrefix } : {}),
       ...(typeof extraData === "object" && extraData !== null ? extraData : {}),
     };
 
     const fcmAndroidNotification: any = {
       sound: "default",
-      channelId: stickyBool ? "sticky_alerts" : "default",
+      channelId: countdownTarget ? "countdown_channel" : stickyBool ? "sticky_alerts" : "default",
       ...(stickyBool ? { sticky: true } : {}),
       ...(cleanImage ? { imageUrl: cleanImage } : {}),
       ...(countdownTarget ? { eventTimestamp: new Date(Number(countdownTarget)) } : {}),
@@ -164,11 +154,15 @@ export async function POST(req: NextRequest) {
           sound: "default",
           title: cleanTitle,
           body: cleanBody,
+          channelId: countdownTarget ? "countdown_channel" : stickyBool ? "sticky_alerts" : "default",
           data: {
             targetScreen: cleanScreen,
             title: cleanTitle,
             body: cleanBody,
             image: cleanImage,
+            imageUrl: cleanImage,
+            isSticky: stickyBool ? "true" : "false",
+            countdownTarget: countdownTarget || "",
           },
         }));
 
