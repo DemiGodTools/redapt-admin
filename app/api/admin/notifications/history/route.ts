@@ -9,21 +9,15 @@ export async function GET(req: NextRequest) {
   try {
     await connectMongo();
 
-    const [logs, totalRegisteredDevices, fcmCount, expoCount] = await Promise.all([
-      NotificationLog.find({}).sort({ sentAt: -1 }).limit(30).lean(),
-      PushToken.countDocuments({}),
-      PushToken.countDocuments({ type: "fcm" }),
-      PushToken.countDocuments({ type: "expo" }),
-    ]);
+    // Lightweight fetch of only last 15 logs without heavy countDocuments on PushTokens
+    const logs = await NotificationLog.find({})
+      .sort({ sentAt: -1 })
+      .limit(15)
+      .lean();
 
     return NextResponse.json({
       success: true,
       data: logs,
-      stats: {
-        total: totalRegisteredDevices,
-        fcm: fcmCount,
-        expo: expoCount,
-      },
     });
   } catch (error: any) {
     console.error("History fetch error:", error);

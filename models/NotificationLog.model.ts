@@ -30,6 +30,8 @@ const NotificationLogSchema = new Schema<INotificationLog>(
 );
 
 NotificationLogSchema.index({ sentAt: -1 });
+// TTL index: automatically auto-delete notification logs older than 30 days from MongoDB
+NotificationLogSchema.index({ sentAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
 export const NotificationLog =
   models.NotificationLog ||

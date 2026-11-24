@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import AdminSidebar from "@/components/AdminSidebar";
 
 interface NotificationHistoryItem {
@@ -21,9 +21,17 @@ export default function NotificationsAdminPage() {
   const [message, setMessage] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [targetScreen, setTargetScreen] = useState("Home");
+  const [targetId, setTargetId] = useState("");
   const [sending, setSending] = useState(false);
+
+  // Direct B2 Upload State
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // History State
   const [history, setHistory] = useState<NotificationHistoryItem[]>([]);
-  const [stats, setStats] = useState<{ total: number; fcm: number; expo: number }>({ total: 0, fcm: 0, expo: 0 });
+  const [showHistory, setShowHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -35,19 +43,57 @@ export default function NotificationsAdminPage() {
       if (json.success && Array.isArray(json.data)) {
         setHistory(json.data);
       }
-      if (json.stats) {
-        setStats(json.stats);
-      }
     } catch {
-      // Ignore network errors on initial mount
+      // Ignore network errors
     } finally {
       setLoadingHistory(false);
     }
   };
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
+  const handleToggleHistory = () => {
+    if (!showHistory && history.length === 0) {
+      fetchHistory();
+    }
+    setShowHistory(!showHistory);
+  };
+
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError("Image is too large (>2MB). Keep banner images under 1MB for fast push delivery.");
+      return;
+    }
+
+    setUploadingImage(true);
+    setUploadError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "notifications");
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.url) {
+        setImageUrl(data.url);
+      } else {
+        setUploadError(data.message || "Failed to upload image to B2.");
+      }
+    } catch (err: any) {
+      setUploadError(err.message || "Network error while uploading image.");
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,12 +103,21 @@ export default function NotificationsAdminPage() {
     }
 
     const confirmed = window.confirm(
-      `Are you sure you want to broadcast this notification to ALL active users on FCM?\n\nTitle: "${title.trim()}"`
+      `Broadcast this notification to all active devices?\n\nTitle: "${title.trim()}"`
     );
     if (!confirmed) return;
 
     setSending(true);
     setToast(null);
+
+    const extraData: Record<string, string> = {};
+    if (targetId.trim()) {
+      if (targetScreen === "SeriesOverview") {
+        extraData.seriesId = targetId.trim();
+      } else if (targetScreen === "ReadBook" || targetScreen === "AudioRdr") {
+        extraData.bookId = targetId.trim();
+      }
+    }
 
     try {
       const res = await fetch("/api/admin/notifications/broadcast", {
@@ -73,20 +128,24 @@ export default function NotificationsAdminPage() {
           message: message.trim(),
           imageUrl: imageUrl.trim() || undefined,
           targetScreen,
+          extraData: Object.keys(extraData).length > 0 ? extraData : undefined,
         }),
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setToast({ type: "success", text: "🚀 Broadcast sent successfully to all users!" });
+        setToast({ type: "success", text: "🚀 Notification broadcast sent successfully to all devices!" });
         setTitle("");
         setMessage("");
         setImageUrl("");
-        fetchHistory();
+        setTargetId("");
+        if (showHistory) {
+          fetchHistory();
+        }
       } else {
         setToast({
           type: "error",
-          text: data.message || "Failed to send notification via FCM.",
+          text: data.message || "Failed to broadcast notification.",
         });
       }
     } catch (err: any) {
@@ -108,28 +167,8 @@ export default function NotificationsAdminPage() {
             </h1>
           </div>
           <p style={{ color: "#9CA3AF", fontSize: "14px", margin: 0 }}>
-            Broadcast instant Firebase Cloud Messaging (FCM) notifications to all devices subscribed to the{" "}
-            <code style={{ color: "#00D2B4", backgroundColor: "rgba(0, 210, 180, 0.12)", padding: "2px 6px", borderRadius: "4px" }}>
-              all_users
-            </code>{" "}
-            topic.
+            Broadcast instant push notifications directly to all registered Android devices with rich banners and deep-link actions.
           </p>
-
-          {/* Registered Devices Counter Pill */}
-          <div style={{ display: "flex", gap: "12px", marginTop: "14px" }}>
-            <div style={{ backgroundColor: "#11171A", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "8px 16px", borderRadius: "10px", fontSize: "13px" }}>
-              <span style={{ color: "#9CA3AF" }}>Total Registered Devices: </span>
-              <strong style={{ color: "#00D2B4" }}>{stats.total}</strong>
-            </div>
-            <div style={{ backgroundColor: "#11171A", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "8px 16px", borderRadius: "10px", fontSize: "13px" }}>
-              <span style={{ color: "#9CA3AF" }}>Native FCM: </span>
-              <strong style={{ color: "#5EEAD4" }}>{stats.fcm}</strong>
-            </div>
-            <div style={{ backgroundColor: "#11171A", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "8px 16px", borderRadius: "10px", fontSize: "13px" }}>
-              <span style={{ color: "#9CA3AF" }}>Expo Clients: </span>
-              <strong style={{ color: "#94A3B8" }}>{stats.expo}</strong>
-            </div>
-          </div>
         </div>
 
         {/* Status Toast */}
@@ -212,7 +251,7 @@ export default function NotificationsAdminPage() {
                   <span style={{ fontSize: "11px", color: "#6B7280" }}>{message.length}/200</span>
                 </div>
                 <textarea
-                  rows={4}
+                  rows={3}
                   maxLength={200}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
@@ -232,24 +271,81 @@ export default function NotificationsAdminPage() {
                 />
               </div>
 
-              {/* Image URL (Optional) */}
+              {/* Direct Image Upload (Backblaze B2) + URL Fallback */}
               <div>
-                <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#D1D5DB", marginBottom: "6px" }}>
-                  Banner Image URL (Optional)
-                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <label style={{ fontSize: "13px", fontWeight: 600, color: "#D1D5DB" }}>
+                    Banner Image (2:1 Ratio, e.g. 1024×512)
+                  </label>
+                  <span style={{ fontSize: "11px", color: "#6B7280" }}>Max 2MB (JPG/PNG/WebP)</span>
+                </div>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageFileChange}
+                  accept="image/jpeg,image/png,image/webp"
+                  style={{ display: "none" }}
+                />
+
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingImage}
+                    style={{
+                      padding: "10px 16px",
+                      backgroundColor: "rgba(0, 210, 180, 0.12)",
+                      border: "1px solid rgba(0, 210, 180, 0.3)",
+                      borderRadius: "10px",
+                      color: "#00D2B4",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      cursor: uploadingImage ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <span>{uploadingImage ? "⏳ Uploading to B2..." : "📁 Upload Banner Image"}</span>
+                  </button>
+
+                  {imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl("")}
+                      style={{
+                        padding: "10px 14px",
+                        backgroundColor: "rgba(239, 68, 68, 0.1)",
+                        border: "1px solid rgba(239, 68, 68, 0.2)",
+                        borderRadius: "10px",
+                        color: "#FCA5A5",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Remove Image
+                    </button>
+                  )}
+                </div>
+
+                {uploadError && (
+                  <p style={{ color: "#EF4444", fontSize: "12px", margin: "4px 0 8px" }}>{uploadError}</p>
+                )}
+
                 <input
                   type="url"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://... (JPG/PNG banner for rich notification preview)"
+                  placeholder="Or paste external image URL directly..."
                   style={{
                     width: "100%",
-                    padding: "12px 14px",
+                    padding: "10px 14px",
                     backgroundColor: "#070B0D",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
                     borderRadius: "10px",
-                    color: "#FFFFFF",
-                    fontSize: "14px",
+                    color: "#9CA3AF",
+                    fontSize: "13px",
                     outline: "none",
                   }}
                 />
@@ -262,7 +358,10 @@ export default function NotificationsAdminPage() {
                 </label>
                 <select
                   value={targetScreen}
-                  onChange={(e) => setTargetScreen(e.target.value)}
+                  onChange={(e) => {
+                    setTargetScreen(e.target.value);
+                    setTargetId("");
+                  }}
                   style={{
                     width: "100%",
                     padding: "12px 14px",
@@ -276,12 +375,40 @@ export default function NotificationsAdminPage() {
                   }}
                 >
                   <option value="Home">Home Feed (Main Screen)</option>
-                  <option value="Series">Series & Books Catalog</option>
+                  <option value="Series">Series & Books Catalog (All Series)</option>
+                  <option value="SeriesOverview">Specific Series Overview (Needs Series ID)</option>
+                  <option value="ReadBook">Direct Book Reader (Needs Book ID)</option>
+                  <option value="AudioRdr">Direct Audio Reader (Needs Book ID)</option>
                   <option value="DailyRewards">Daily Rewards & Streak</option>
                   <option value="Subscription">Upgrade / Subscription Plan</option>
-                  <option value="Profile">User Profile</option>
                 </select>
               </div>
+
+              {/* Optional Target ID for Deep Linking */}
+              {(targetScreen === "SeriesOverview" || targetScreen === "ReadBook" || targetScreen === "AudioRdr") && (
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#5EEAD4", marginBottom: "6px" }}>
+                    {targetScreen === "SeriesOverview" ? "Target Series ID" : "Target Book ID"}
+                  </label>
+                  <input
+                    type="text"
+                    value={targetId}
+                    onChange={(e) => setTargetId(e.target.value)}
+                    placeholder={targetScreen === "SeriesOverview" ? "e.g. 66df879..." : "e.g. 66e2c34..."}
+                    style={{
+                      width: "100%",
+                      padding: "11px 14px",
+                      backgroundColor: "#070B0D",
+                      border: "1px solid rgba(0, 210, 180, 0.4)",
+                      borderRadius: "10px",
+                      color: "#FFFFFF",
+                      fontSize: "13.5px",
+                      outline: "none",
+                    }}
+                    required
+                  />
+                </div>
+              )}
 
               {/* Action Button */}
               <button
@@ -305,7 +432,7 @@ export default function NotificationsAdminPage() {
                 }}
               >
                 {sending ? (
-                  <span>Broadcasting to FCM...</span>
+                  <span>Broadcasting to Devices...</span>
                 ) : (
                   <>
                     <span>🚀</span>
@@ -327,215 +454,256 @@ export default function NotificationsAdminPage() {
               flexDirection: "column",
             }}
           >
-            <h2 style={{ fontSize: "17px", fontWeight: 700, color: "#FFFFFF", margin: "0 0 18px" }}>
-              Live Mobile Notification Preview
-            </h2>
-
-            <div
-              style={{
-                flex: 1,
-                backgroundColor: "#030712",
-                borderRadius: "20px",
-                padding: "20px",
-                border: "1px solid rgba(255, 255, 255, 0.06)",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-              }}
-            >
-              {/* Android Notification Pill Card */}
-              <div
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+              <h2 style={{ fontSize: "17px", fontWeight: 700, color: "#FFFFFF", margin: 0 }}>
+                Live Android Shade Preview
+              </h2>
+              <span
                 style={{
-                  backgroundColor: "rgba(30, 41, 59, 0.8)",
-                  backdropFilter: "blur(20px)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  borderRadius: "18px",
-                  padding: "16px",
-                  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.6)",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#00D2B4",
+                  backgroundColor: "rgba(0, 210, 180, 0.12)",
+                  padding: "4px 8px",
+                  borderRadius: "6px",
                 }}
               >
-                {/* App Row */}
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
-                  <div
-                    style={{
-                      width: "22px",
-                      height: "22px",
-                      borderRadius: "6px",
-                      backgroundColor: "#00D2B4",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 900,
-                      fontSize: "12px",
-                      color: "#070B0D",
-                    }}
-                  >
-                    R
-                  </div>
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#9CA3AF" }}>Readapt</span>
-                  <span style={{ fontSize: "11px", color: "#64748B" }}>• now</span>
+                System Shade
+              </span>
+            </div>
+
+            <p style={{ color: "#9CA3AF", fontSize: "13px", margin: "0 0 16px" }}>
+              This simulates how Android devices render the expanded BigPicture notification shade.
+            </p>
+
+            {/* Android Notification Card Mockup */}
+            <div
+              style={{
+                backgroundColor: "#1B2226",
+                borderRadius: "16px",
+                padding: "16px",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                boxShadow: "0 10px 25px rgba(0, 0, 0, 0.5)",
+              }}
+            >
+              {/* Header inside Notification: App Icon + App Name + Timestamp */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+                <div
+                  style={{
+                    width: "22px",
+                    height: "22px",
+                    borderRadius: "6px",
+                    backgroundColor: "#00D2B4",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "12px",
+                    fontWeight: 900,
+                    color: "#070B0D",
+                  }}
+                >
+                  R
                 </div>
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#F3F4F6" }}>Readapt</span>
+                <span style={{ fontSize: "11px", color: "#9CA3AF" }}>• Just now</span>
+              </div>
 
-                {/* Title */}
-                <h3
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    color: "#FFFFFF",
-                    margin: "0 0 4px",
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {title.trim() || "Notification Title Preview"}
-                </h3>
-
-                {/* Message */}
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#CBD5E1",
-                    margin: "0 0 10px",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {message.trim() || "Your notification message will appear here in the user's notification bar."}
+              {/* Title & Body */}
+              <div style={{ marginBottom: "12px" }}>
+                <h4 style={{ fontSize: "15px", fontWeight: 700, color: "#FFFFFF", margin: "0 0 4px" }}>
+                  {title || "Notification Title Preview"}
+                </h4>
+                <p style={{ fontSize: "13.5px", color: "#D1D5DB", margin: 0, lineHeight: 1.45 }}>
+                  {message || "Compose a message on the left to preview how your broadcast appears on user lock screens."}
                 </p>
+              </div>
 
-                {/* Optional Banner Image */}
-                {imageUrl.trim() && (
-                  <div style={{ marginTop: "10px", borderRadius: "10px", overflow: "hidden", maxHeight: "150px" }}>
-                    <img
-                      src={imageUrl.trim()}
-                      alt="Banner Preview"
-                      style={{ width: "100%", height: "auto", display: "block", objectFit: "cover" }}
-                      onError={(e) => ((e.target as any).style.display = "none")}
-                    />
-                  </div>
-                )}
-
-                {/* Action button tag */}
-                <div style={{ marginTop: "12px", display: "flex", justifyContent: "flex-end" }}>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "#00D2B4",
-                      backgroundColor: "rgba(0, 210, 180, 0.12)",
-                      padding: "4px 10px",
-                      borderRadius: "6px",
+              {/* Rich Banner Image Preview */}
+              {imageUrl ? (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "170px",
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                    backgroundColor: "#070B0D",
+                    marginBottom: "12px",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                  }}
+                >
+                  <img
+                    src={imageUrl}
+                    alt="Banner Preview"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        "https://placehold.co/600x300/11171A/00D2B4?text=Invalid+Image+URL";
                     }}
-                  >
-                    Open: {targetScreen}
-                  </span>
+                  />
                 </div>
+              ) : null}
+
+              {/* Tap action footer */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingTop: "10px",
+                  borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+                  fontSize: "12px",
+                  color: "#9CA3AF",
+                }}
+              >
+                <span>Tap action:</span>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#00D2B4",
+                    backgroundColor: "rgba(0, 210, 180, 0.12)",
+                    padding: "4px 10px",
+                    borderRadius: "6px",
+                  }}
+                >
+                  Open: {targetScreen} {targetId ? `(${targetId.slice(0, 8)}...)` : ""}
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Bottom Section: Sent Broadcast History Table */}
+        {/* Collapsible History Section (Zero MongoDB Overdraw on Initial Mount) */}
         <div
           style={{
             backgroundColor: "#11171A",
             border: "1px solid rgba(255, 255, 255, 0.08)",
             borderRadius: "18px",
-            padding: "24px",
+            padding: "20px 24px",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
-            <h2 style={{ fontSize: "17px", fontWeight: 700, color: "#FFFFFF", margin: 0 }}>
-              Broadcast Transmission History
-            </h2>
-            <button
-              onClick={fetchHistory}
-              disabled={loadingHistory}
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.05)",
-                color: "#9CA3AF",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "8px",
-                padding: "6px 14px",
-                fontSize: "13px",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              {loadingHistory ? "Refreshing..." : "↻ Refresh History"}
-            </button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#FFFFFF", margin: "0 0 4px" }}>
+                Broadcast Transmission Logs
+              </h2>
+              <p style={{ color: "#6B7280", fontSize: "13px", margin: 0 }}>
+                Auto-purged after 30 days via MongoDB TTL to keep database size minimal.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "10px" }}>
+              {showHistory && (
+                <button
+                  onClick={fetchHistory}
+                  disabled={loadingHistory}
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                    color: "#9CA3AF",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "8px",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  {loadingHistory ? "Refreshing..." : "↻ Refresh"}
+                </button>
+              )}
+              <button
+                onClick={handleToggleHistory}
+                style={{
+                  backgroundColor: showHistory ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 210, 180, 0.15)",
+                  color: showHistory ? "#D1D5DB" : "#00D2B4",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "6px 14px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                {showHistory ? "Hide Logs ▲" : "View Recent Logs (15) ▼"}
+              </button>
+            </div>
           </div>
 
-          {history.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#6B7280", fontSize: "14px" }}>
-              No broadcast notifications sent yet. Use the composer above to send your first FCM broadcast!
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.08)", color: "#9CA3AF" }}>
-                    <th style={{ padding: "12px 14px" }}>Date & Time</th>
-                    <th style={{ padding: "12px 14px" }}>Title</th>
-                    <th style={{ padding: "12px 14px" }}>Message</th>
-                    <th style={{ padding: "12px 14px" }}>Target</th>
-                    <th style={{ padding: "12px 14px" }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((item) => (
-                    <tr
-                      key={item._id}
-                      style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)", color: "#E5E7EB" }}
-                    >
-                      <td style={{ padding: "12px 14px", whiteSpace: "nowrap", color: "#9CA3AF", fontSize: "12px" }}>
-                        {new Date(item.sentAt).toLocaleString()}
-                      </td>
-                      <td style={{ padding: "12px 14px", fontWeight: 600, color: "#FFFFFF", maxWidth: "220px" }}>
-                        {item.title}
-                      </td>
-                      <td
-                        style={{
-                          padding: "12px 14px",
-                          color: "#9CA3AF",
-                          maxWidth: "340px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {item.body}
-                      </td>
-                      <td style={{ padding: "12px 14px" }}>
-                        <span
-                          style={{
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            backgroundColor: "rgba(255, 255, 255, 0.05)",
-                            fontSize: "12px",
-                            color: "#00D2B4",
-                          }}
+          {showHistory && (
+            <div style={{ marginTop: "18px" }}>
+              {history.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "30px", color: "#6B7280", fontSize: "13.5px" }}>
+                  {loadingHistory ? "Loading logs from MongoDB..." : "No recent broadcast logs found."}
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.08)", color: "#9CA3AF" }}>
+                        <th style={{ padding: "10px 12px" }}>Time</th>
+                        <th style={{ padding: "10px 12px" }}>Title</th>
+                        <th style={{ padding: "10px 12px" }}>Message</th>
+                        <th style={{ padding: "10px 12px" }}>Target</th>
+                        <th style={{ padding: "10px 12px" }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((item) => (
+                        <tr
+                          key={item._id}
+                          style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)", color: "#E5E7EB" }}
                         >
-                          {item.targetScreen || "Home"}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 14px" }}>
-                        <span
-                          style={{
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            backgroundColor:
-                              item.status === "SENT" ? "rgba(0, 210, 180, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                            color: item.status === "SENT" ? "#5EEAD4" : "#FCA5A5",
-                            fontWeight: 700,
-                            fontSize: "11px",
-                          }}
-                        >
-                          {item.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                          <td style={{ padding: "10px 12px", whiteSpace: "nowrap", color: "#9CA3AF", fontSize: "12px" }}>
+                            {new Date(item.sentAt).toLocaleString()}
+                          </td>
+                          <td style={{ padding: "10px 12px", fontWeight: 600, color: "#FFFFFF", maxWidth: "200px" }}>
+                            {item.title}
+                          </td>
+                          <td
+                            style={{
+                              padding: "10px 12px",
+                              color: "#9CA3AF",
+                              maxWidth: "300px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {item.body}
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <span
+                              style={{
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                backgroundColor: "rgba(255, 255, 255, 0.05)",
+                                fontSize: "11px",
+                                color: "#00D2B4",
+                              }}
+                            >
+                              {item.targetScreen || "Home"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>
+                            <span
+                              style={{
+                                padding: "2px 8px",
+                                borderRadius: "6px",
+                                backgroundColor:
+                                  item.status === "SENT" ? "rgba(0, 210, 180, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                                color: item.status === "SENT" ? "#5EEAD4" : "#FCA5A5",
+                                fontWeight: 700,
+                                fontSize: "11px",
+                              }}
+                            >
+                              {item.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
