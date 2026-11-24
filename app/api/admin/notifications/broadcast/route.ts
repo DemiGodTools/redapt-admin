@@ -85,6 +85,57 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Also fan out directly to all registered native FCM device tokens
+    let fcmDirectSuccessCount = 0;
+    try {
+      const { PushToken } = await import("@/models/PushToken.model");
+      const fcmTokens: string[] = await PushToken.find({
+        type: "fcm",
+        token: { $ne: null, $nin: ["", "test_token_123"] },
+      }).distinct("token");
+
+      if (fcmTokens && fcmTokens.length > 0) {
+        // Firebase sendEachForMulticast accepts max 500 tokens per batch
+        const batchSize = 500;
+        for (let i = 0; i < fcmTokens.length; i += batchSize) {
+          const batch = fcmTokens.slice(i, i + batchSize);
+          try {
+            const multicastRes = await messaging.sendEachForMulticast({
+              tokens: batch,
+              notification: {
+                title: cleanTitle,
+                body: cleanBody,
+                ...(cleanImage ? { imageUrl: cleanImage } : {}),
+              },
+              data: {
+                targetScreen: cleanScreen,
+                title: cleanTitle,
+                body: cleanBody,
+                ...(cleanImage ? { image: cleanImage } : {}),
+                ...(typeof extraData === "object" && extraData !== null ? extraData : {}),
+              },
+              android: {
+                priority: "high",
+                notification: {
+                  sound: "default",
+                  channelId: "default",
+                  ...(cleanImage ? { imageUrl: cleanImage } : {}),
+                },
+              },
+            });
+            fcmDirectSuccessCount += multicastRes.successCount;
+            console.log(
+              `[Broadcast] Direct FCM batch sent: ${multicastRes.successCount} succeeded, ${multicastRes.failureCount} failed`
+            );
+          } catch (batchErr) {
+            console.warn("[Broadcast] Error sending direct FCM multicast batch:", batchErr);
+          }
+        }
+      }
+    } catch (fcmDirectErr) {
+      console.warn("[Broadcast] Direct FCM multicast token lookup warning:", fcmDirectErr);
+    }
+
     // Also fan out to Expo Push Service for any devices currently running via Expo Go
     try {
       const { PushToken } = await import("@/models/PushToken.model");
