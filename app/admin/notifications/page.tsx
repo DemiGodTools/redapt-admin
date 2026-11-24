@@ -1195,7 +1195,7 @@ export default function NotificationsAdminPage() {
                             : (title || "New Chapter Released: Fact Holic Shorts")}
                           </span>
                           <span style={{ fontSize: "11px", color: "#8E918F", flexShrink: 0 }}>
-                            • {isCountdown ? formatCountdownClock(countdownMinutes) : "now"}
+                            • {isCountdown ? formatCountdownClock(totalCountdownMinutes, activePrefix) : "now"}
                           </span>
                         </div>
                         <div
