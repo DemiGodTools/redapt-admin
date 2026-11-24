@@ -31,10 +31,14 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: categoriesTree,
     });
+    response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+    response.headers.set("CDN-Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+    response.headers.set("Vercel-CDN-Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+    return response;
   } catch (error: any) {
     console.error("GET /api/category error:", error);
     return NextResponse.json(

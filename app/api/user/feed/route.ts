@@ -293,7 +293,7 @@ export async function GET(req: NextRequest) {
           }));
         })();
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         banners,
@@ -304,6 +304,10 @@ export async function GET(req: NextRequest) {
         thought: thought || null,
       },
     });
+    response.headers.set("Cache-Control", "public, s-maxage=30, stale-while-revalidate=180");
+    response.headers.set("CDN-Cache-Control", "public, s-maxage=30, stale-while-revalidate=180");
+    response.headers.set("Vercel-CDN-Cache-Control", "public, s-maxage=30, stale-while-revalidate=180");
+    return response;
   } catch (err: any) {
     console.error("Feed error:", err);
     return NextResponse.json(
