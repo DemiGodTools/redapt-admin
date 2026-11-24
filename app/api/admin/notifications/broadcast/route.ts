@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     await connectMongo();
 
     const body = await req.json();
-    const { title, message, imageUrl, targetScreen, extraData, isSticky, countdownMinutes } = body;
+    const { title, message, imageUrl, targetScreen, extraData, isSticky, countdownMinutes, countdownPrefix, includeBadgeInTitle } = body;
 
     if (!title || typeof title !== "string" || !title.trim()) {
       return NextResponse.json(
@@ -35,12 +35,27 @@ export async function POST(req: NextRequest) {
       ? String(Date.now() + Number(countdownMinutes) * 60 * 1000)
       : "";
 
+    // If countdown badge is requested, prefix the title so ALL Android versions display it clearly
+    const effectivePrefix = (countdownPrefix || "Launching in").trim();
+    let displayTitle = cleanTitle;
+    if (includeBadgeInTitle && countdownMinutes && Number(countdownMinutes) > 0) {
+      const totalM = Number(countdownMinutes);
+      const d = Math.floor(totalM / 1440);
+      const h = Math.floor((totalM % 1440) / 60);
+      const m = totalM % 60;
+      let durStr = "";
+      if (d > 0) durStr = `${d}d ${h}h`;
+      else if (h > 0) durStr = `${h}h ${m}m`;
+      else durStr = `${m}m`;
+      displayTitle = `[${effectivePrefix} ${durStr}] ${cleanTitle}`;
+    }
+
     // Prepare FCM Topic Message payload
     const messaging = getFirebaseMessaging();
 
     const fcmDataPayload: Record<string, string> = {
       targetScreen: cleanScreen,
-      title: cleanTitle,
+      title: displayTitle,
       body: cleanBody,
       ...(cleanImage ? { image: cleanImage } : {}),
       ...(stickyBool ? { isSticky: "true" } : {}),
@@ -59,7 +74,7 @@ export async function POST(req: NextRequest) {
     const fcmPayload: any = {
       topic: "all_users",
       notification: {
-        title: cleanTitle,
+        title: displayTitle,
         body: cleanBody,
         ...(cleanImage ? { imageUrl: cleanImage } : {}),
       },
@@ -115,7 +130,7 @@ export async function POST(req: NextRequest) {
             const multicastRes = await messaging.sendEachForMulticast({
               tokens: batch,
               notification: {
-                title: cleanTitle,
+                title: displayTitle,
                 body: cleanBody,
                 ...(cleanImage ? { imageUrl: cleanImage } : {}),
               },
