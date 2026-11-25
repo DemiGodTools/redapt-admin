@@ -66,22 +66,16 @@ export async function GET(
       return NextResponse.json({ success: false, message: "Invalid chapter id" }, { status: 400 });
     }
 
-    // ⚡ 1. SECURE: Get user & entitlement via robust auth helper
-    const { user, effectivePlan } = await getVerifiedUserAndEntitlement(req);
-    const userPlan = effectivePlan;
-    const currentUserId = user?._id ? user._id.toString() : null;
-    const userEmail = user?.email || null;
-
+    // ⚡ 1. SECURE: Run auth check, raw questions projection, and chapter populate in parallel
     const chapterObjectId = new Types.ObjectId(id);
 
-    const rawChapterDoc = await Chapter.collection.findOne(
-      { _id: chapterObjectId },
-      { projection: { questions: 1 } }
-    );
-
-    let chapter: any = null;
-    try {
-      chapter = await Chapter.findById(id)
+    const [authResult, rawChapterDoc, populatedChapter] = await Promise.all([
+      getVerifiedUserAndEntitlement(req),
+      Chapter.collection.findOne(
+        { _id: chapterObjectId },
+        { projection: { questions: 1 } }
+      ),
+      Chapter.findById(id)
         .populate({ path: "category", strictPopulate: false })
         .populate({ path: "subCategory", strictPopulate: false })
         .populate({
@@ -97,12 +91,21 @@ export async function GET(
         .populate({
           path: "series",
           strictPopulate: false,
-          populate: { path: "chapters.content", strictPopulate: false },
+          populate: {
+            path: "chapters.content",
+            select: "-lyrics -transcript -toc -questions -comments -qnaComments",
+            strictPopulate: false,
+          },
         })
-        .lean();
-    } catch {
-      chapter = await Chapter.findById(id).lean();
-    }
+        .lean()
+        .catch(() => Chapter.findById(id).lean()),
+    ]);
+
+    const { user, effectivePlan } = authResult;
+    const userPlan = effectivePlan;
+    const currentUserId = user?._id ? user._id.toString() : null;
+    const userEmail = user?.email || null;
+    const chapter: any = populatedChapter;
 
     if (!chapter) {
       return NextResponse.json({ success: false, message: "Chapter not found" }, { status: 404 });

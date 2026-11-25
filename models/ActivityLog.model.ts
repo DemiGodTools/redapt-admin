@@ -32,6 +32,8 @@ const ActivityLogSchema = new Schema<IActivityLog>(
 
 ActivityLogSchema.index({ createdAt: -1 });
 ActivityLogSchema.index({ category: 1, createdAt: -1 });
+// Auto-expire activity logs after 30 days to keep free-tier MongoDB storage lean
+ActivityLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 });
 
 export const ActivityLog =
   models.ActivityLog || model<IActivityLog>("ActivityLog", ActivityLogSchema);

@@ -7,13 +7,21 @@ export async function GET() {
     await connectMongo();
 
     const categories = await Category.find()
-      .sort({ name: 1 });
+      .sort({ name: 1 })
+      .lean();
 
-    return NextResponse.json({
-      success: true,
-      count: categories.length,
-      data: categories,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        count: categories.length,
+        data: categories,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        },
+      }
+    );
   } catch (error) {
     console.error("GET CATEGORIES ERROR:", error);
     return NextResponse.json(

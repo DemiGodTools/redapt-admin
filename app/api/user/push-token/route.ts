@@ -35,7 +35,10 @@ export async function POST(req: NextRequest) {
         if (subResponse.successCount > 0) {
           subscribedToTopic = true;
         } else if (subResponse.errors && subResponse.errors.length > 0) {
-          console.warn("FCM topic subscription error:", subResponse.errors[0]?.error);
+          const errMsg = String(subResponse.errors[0]?.error || "");
+          if (!errMsg.includes("topicSubscriptions.create")) {
+            console.warn("FCM topic subscription error:", subResponse.errors[0]?.error);
+          }
         }
       } catch (fcmErr) {
         console.warn("Could not subscribe token to FCM topic 'all_users':", fcmErr);

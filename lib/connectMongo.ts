@@ -46,12 +46,16 @@ async function connectMongo(): Promise<typeof mongoose> {
       if (!MONGODB_URI) {
         throw new Error("MONGODB_URI environment variable is missing!");
       }
+      const poolOptions = {
+        dbName: DB_NAME,
+        bufferCommands: false,
+        serverSelectionTimeoutMS: 6000,
+        maxPoolSize: 5,
+        minPoolSize: 1,
+        maxIdleTimeMS: 30000,
+      };
       try {
-        return await mongoose.connect(MONGODB_URI, {
-          dbName: DB_NAME,
-          bufferCommands: false,
-          serverSelectionTimeoutMS: 6000,
-        });
+        return await mongoose.connect(MONGODB_URI, poolOptions);
       } catch (err: any) {
         if (
           (err?.message?.includes("querySrv") ||
@@ -61,11 +65,7 @@ async function connectMongo(): Promise<typeof mongoose> {
           DIRECT_MONGODB_URI !== MONGODB_URI
         ) {
           console.warn("⚠️ SRV resolution failed, falling back to direct replica-set URI...");
-          return await mongoose.connect(DIRECT_MONGODB_URI, {
-            dbName: DB_NAME,
-            bufferCommands: false,
-            serverSelectionTimeoutMS: 6000,
-          });
+          return await mongoose.connect(DIRECT_MONGODB_URI, poolOptions);
         }
         throw err;
       }

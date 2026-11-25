@@ -11,6 +11,43 @@ import { Banner } from "@/models/Banner.model";
 import { jwtVerify } from "jose";
 import { IS_EARLY_ACCESS_FREE } from "@/lib/verifyUserEntitlement";
 
+// Lightweight 2-minute in-memory cache for shared non-user-specific catalog data
+// Keeps warm Vercel lambdas fast (~1ms) while keeping user likes/profile 100% live
+let sharedFeedCache: {
+  series: any[];
+  thought: any;
+  customBanners: any[];
+  expiresAt: number;
+} | null = null;
+
+async function getSharedFeedCatalog() {
+  const now = Date.now();
+  if (sharedFeedCache && sharedFeedCache.expiresAt > now) {
+    return sharedFeedCache;
+  }
+  const [series, thought, customBanners] = await Promise.all([
+    Series.find({})
+      .select(
+        "title description joinedBy chapters for cover category subCategory type author recommendationBookId recommendationText"
+      )
+      .lean(),
+    Thought.findOne({}).sort({ updatedAt: -1 }).lean(),
+    Banner.find({ isActive: true })
+      .sort({ order: 1, createdAt: -1 })
+      .populate("series")
+      .populate("chapter")
+      .lean()
+      .catch(() => [] as any[]),
+  ]);
+  sharedFeedCache = {
+    series,
+    thought,
+    customBanners,
+    expiresAt: now + 120_000, // 2 minutes
+  };
+  return sharedFeedCache;
+}
+
 export async function GET(req: NextRequest) {
   try {
     await connectMongo();
@@ -36,23 +73,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // These reads do not depend on each other — run them together instead of
-    // paying a separate database round-trip for each one.
-    const [user, series, thought, customBanners] = await Promise.all([
+    // Run live user lookup in parallel with cached shared catalog
+    const [user, sharedCatalog] = await Promise.all([
       email ? User.findOne({ email }).lean() : Promise.resolve(null),
-      Series.find({})
-        .select(
-          "title description joinedBy chapters for cover category subCategory type author recommendationBookId recommendationText"
-        )
-        .lean(),
-      Thought.findOne({}).sort({ updatedAt: -1 }).lean(),
-      Banner.find({ isActive: true })
-        .sort({ order: 1, createdAt: -1 })
-        .populate("series")
-        .populate("chapter")
-        .lean()
-        .catch(() => [] as any[]),
+      getSharedFeedCatalog(),
     ]);
+    const { series, thought, customBanners } = sharedCatalog;
 
     let topCategories: Types.ObjectId[] = [];
 
