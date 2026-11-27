@@ -8,8 +8,8 @@ import "@/models/Series.model";
 import { Series } from "@/models/Series.model";
 import { Thought } from "@/models/Thought.model";
 import { Banner } from "@/models/Banner.model";
-import { jwtVerify } from "jose";
 import { IS_EARLY_ACCESS_FREE } from "@/lib/verifyUserEntitlement";
+import { getAuthenticatedUser } from "@/lib/userAuth";
 
 // Lightweight 2-minute in-memory cache for shared non-user-specific catalog data
 // Keeps warm Vercel lambdas fast (~1ms) while keeping user likes/profile 100% live
@@ -52,26 +52,8 @@ export async function GET(req: NextRequest) {
   try {
     await connectMongo();
 
-    let email = req.headers.get("x-user-email");
-    if (!email) {
-      const authHeader =
-        req.headers.get("authorization") || req.headers.get("Authorization");
-      if (authHeader) {
-        const parts = authHeader.split(" ");
-        if (parts.length === 2 && parts[0].toLowerCase() === "bearer") {
-          const token = parts[1];
-          try {
-            const rawSecret =
-              process.env.JWT_SECRET ||
-              process.env.NEXTAUTH_SECRET ||
-              "readapt_super_secret_jwt_key_12345";
-            const secret = new TextEncoder().encode(rawSecret);
-            const { payload } = await jwtVerify(token, secret);
-            email = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
-          } catch {}
-        }
-      }
-    }
+    const authUser = await getAuthenticatedUser(req);
+    const email = authUser?.email || null;
 
     // Run live user lookup in parallel with cached shared catalog
     const [user, sharedCatalog] = await Promise.all([

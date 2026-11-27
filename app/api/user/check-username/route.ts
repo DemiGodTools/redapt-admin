@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectMongo from "@/lib/connectMongo";
 import { User } from "@/models/User.model";
-import { jwtVerify } from "jose";
+import { getAuthenticatedUser } from "@/lib/userAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -70,24 +70,8 @@ export async function GET(req: NextRequest) {
     }
 
     // 4. Authenticate caller (if token present) to check if it's their own username
-    let requestingEmail: string | null = req.headers.get("x-user-email");
-    if (!requestingEmail) {
-      const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-        if (token && token !== "undefined" && token !== "null") {
-          try {
-            const rawSecret =
-              process.env.JWT_SECRET ||
-              process.env.NEXTAUTH_SECRET ||
-              "readapt_super_secret_jwt_key_12345";
-            const secret = new TextEncoder().encode(rawSecret.trim());
-            const { payload } = await jwtVerify(token, secret);
-            requestingEmail = ((payload as any)?.email || (payload as any)?.user?.email || null) as string | null;
-          } catch {}
-        }
-      }
-    }
+    const authUser = await getAuthenticatedUser(req);
+    const requestingEmail: string | null = authUser?.email || null;
 
     await connectMongo();
 

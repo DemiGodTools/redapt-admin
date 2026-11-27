@@ -103,7 +103,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.profession !== undefined) {
-      updates.profession = cleanText(body.profession, 40);
+      const cleanedProfession = cleanText(body.profession, 40);
+      updates.profession = cleanedProfession;
+      if (cleanedProfession.length > 0) {
+        updates.isProfileCompleted = true;
+      }
     }
 
     if (body.interests !== undefined) {
