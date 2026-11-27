@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getB2SignedDownloadUrl } from "@/lib/b2";
+import { getCdnSignedUrl } from "@/lib/b2";
 import { recordBandwidthEgress } from "@/lib/bandwidthTracker";
 
 export const dynamic = "force-dynamic";
@@ -68,15 +68,13 @@ export async function GET(
     // keep using the 307 redirect so it streams straight from B2.
     const MAX_PROXY_BYTES = 4 * 1024 * 1024;
 
-    // Generate secure signed URL valid for 2 hours
-    const signedUrl = await getB2SignedDownloadUrl(key, 7200);
+    // Generate expiring HMAC-signed Cloudflare CDN URL valid for 2 hours
+    const cdnUrl = getCdnSignedUrl(key, 7200);
 
     // ⚡ 1. Images & Covers: Direct Edge Stream & Global CDN Cache
-    // Proxies from B2 and caches on Vercel's Edge Network (Mumbai, Delhi, etc.)
-    // Transforms 2-3 second latency into 15ms-40ms instant loads!
     if (isImage) {
       try {
-        const b2Res = await fetch(signedUrl);
+        const b2Res = await fetch(cdnUrl);
         const upstreamLength = Number(b2Res.headers.get("content-length") || 0);
 
         if (b2Res.ok && b2Res.body && upstreamLength <= MAX_PROXY_BYTES) {
@@ -116,10 +114,10 @@ export async function GET(
     const estMediaBytes = key.endsWith(".mp3") || key.endsWith(".m4a") ? 3500000 : 1500000;
     recordBandwidthEgress(key, estMediaBytes).catch(() => {});
 
-    const response = NextResponse.redirect(signedUrl, 307);
+    const response = NextResponse.redirect(cdnUrl, 307);
     response.headers.set(
       "Cache-Control",
-      "public, max-age=3600, s-maxage=7200, stale-while-revalidate=86400"
+      "public, max-age=1800, s-maxage=3600, stale-while-revalidate=3600"
     );
     return response;
   } catch (error: any) {

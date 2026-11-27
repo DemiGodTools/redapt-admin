@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -51,6 +52,23 @@ export async function getB2SignedDownloadUrl(key: string, expiresInSeconds: numb
     Key: cleanKey,
   });
   return await getSignedUrl(b2Client, cmd, { expiresIn: expiresInSeconds });
+}
+
+const CDN_BASE_URL = (process.env.CDN_BASE_URL || "https://cdn.373767.xyz").replace(/\/+$/, "");
+const CDN_SIGNING_SECRET = process.env.CDN_SIGNING_SECRET || "readapt_cdn_secret_2026_x9k2";
+
+/**
+ * Generates an expiring HMAC-signed URL served through Cloudflare Worker CDN (cdn.373767.xyz)
+ */
+export function getCdnSignedUrl(key: string, expiresInSeconds: number = 7200): string {
+  const cleanKey = key.replace(/^\/+/, "");
+  const exp = String(Date.now() + expiresInSeconds * 1000);
+  const sig = crypto
+    .createHmac("sha256", CDN_SIGNING_SECRET)
+    .update(`${cleanKey}:${exp}`)
+    .digest("hex");
+  const encodedKey = cleanKey.split("/").map(encodeURIComponent).join("/");
+  return `${CDN_BASE_URL}/${encodedKey}?exp=${exp}&sig=${sig}`;
 }
 
 /**
