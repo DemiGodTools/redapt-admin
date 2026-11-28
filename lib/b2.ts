@@ -55,16 +55,23 @@ export async function getB2SignedDownloadUrl(key: string, expiresInSeconds: numb
 }
 
 const CDN_BASE_URL = (process.env.CDN_BASE_URL || "https://cdn.373767.xyz").replace(/\/+$/, "");
-const CDN_SIGNING_SECRET = process.env.CDN_SIGNING_SECRET || "readapt_cdn_secret_2026_x9k2";
+
+function getCdnSigningSecret(): string {
+  const secret = process.env.CDN_SIGNING_SECRET?.trim();
+  if (!secret) {
+    throw new Error("CDN_SIGNING_SECRET environment variable is missing");
+  }
+  return secret;
+}
 
 /**
  * Generates an expiring HMAC-signed URL served through Cloudflare Worker CDN (cdn.373767.xyz)
  */
-export function getCdnSignedUrl(key: string, expiresInSeconds: number = 7200): string {
+export function getCdnSignedUrl(key: string, expiresInSeconds: number = 21600): string {
   const cleanKey = key.replace(/^\/+/, "");
   const exp = String(Date.now() + expiresInSeconds * 1000);
   const sig = crypto
-    .createHmac("sha256", CDN_SIGNING_SECRET)
+    .createHmac("sha256", getCdnSigningSecret())
     .update(`${cleanKey}:${exp}`)
     .digest("hex");
   const encodedKey = cleanKey.split("/").map(encodeURIComponent).join("/");
