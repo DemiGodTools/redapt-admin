@@ -49,8 +49,10 @@ async function connectMongo(): Promise<typeof mongoose> {
       const poolOptions = {
         dbName: DB_NAME,
         bufferCommands: false,
-        serverSelectionTimeoutMS: 6000,
-        maxPoolSize: 5,
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
+        socketTimeoutMS: 20000,
+        maxPoolSize: 10,
         minPoolSize: 1,
         maxIdleTimeMS: 30000,
       };

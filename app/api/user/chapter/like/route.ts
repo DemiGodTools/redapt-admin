@@ -4,6 +4,7 @@ import { User } from "@/models/User.model";
 import { Chapter } from "@/models/Chapter.model";
 import { Types } from "mongoose";
 import { getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
+import { checkRateLimit } from "@/lib/userAuth";
 
 interface LikeChapterBody {
   chapterId: string;
@@ -20,6 +21,14 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { success: false, message: "Unauthorized: Invalid or missing session" },
         { status: 401 }
+      );
+    }
+
+    const rate = checkRateLimit(`like:${user._id.toString()}`, 40, 30_000);
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { success: false, message: "Too many like actions. Please slow down." },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
       );
     }
 

@@ -19,5 +19,7 @@ const QuestionSchema = new Schema<IQuestion>(
   { timestamps: true }
 );
 
+QuestionSchema.index({ comments: 1 });
+
 export const Question =
   models.Question || model<IQuestion>("Question", QuestionSchema);

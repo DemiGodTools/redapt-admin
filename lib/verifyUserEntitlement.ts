@@ -1,6 +1,8 @@
 // File: lib/verifyUserEntitlement.ts (Backend)
 import jwt from "jsonwebtoken";
+import { Types } from "mongoose";
 import { User } from "@/models/User.model";
+import { getJwtVerifySecrets } from "@/lib/userAuth";
 
 /**
  * ⚡ GOOGLE PLAY COMPLIANT EARLY ACCESS SWITCH (Backend)
@@ -25,40 +27,32 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (token && token !== "undefined" && token !== "null") {
-      const rawSecret =
-        process.env.JWT_SECRET ||
-        process.env.NEXTAUTH_SECRET ||
-        "readapt_super_secret_jwt_key_12345";
-      const cleanSecret = rawSecret.replace(/["']/g, "").trim();
-
-      for (const secret of [cleanSecret, rawSecret.trim(), "readapt_super_secret_jwt_key_12345"]) {
+      const secrets = getJwtVerifySecrets();
+      for (const secret of secrets) {
         try {
           const decoded = jwt.verify(token, secret) as any;
-          if (decoded?.email) email = decoded.email;
-          if (decoded?._id || decoded?.userId) userId = decoded._id || decoded.userId;
+          const decodedEmail = decoded?.email || decoded?.user?.email;
+          if (decodedEmail && typeof decodedEmail === "string") {
+            email = decodedEmail;
+          }
+          const decodedId = decoded?._id || decoded?.userId || decoded?.user?._id;
+          if (decodedId && typeof decodedId === "string") {
+            userId = decodedId;
+          }
           if (email || userId) break;
         } catch {
-          // Try next secret
+          // Try next normalized secret
         }
-      }
-
-      // If token verification threw but token has valid base64 payload
-      if (!email && !userId && token.includes(".")) {
-        try {
-          const parts = token.split(".");
-          if (parts[1]) {
-            const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-            const decodedPayload = JSON.parse(Buffer.from(b64, "base64").toString("utf-8"));
-            if (decodedPayload?.email) email = decodedPayload.email;
-            if (decodedPayload?._id || decodedPayload?.userId) userId = decodedPayload._id || decodedPayload.userId;
-          }
-        } catch {}
       }
     }
   }
 
-  // Fallback headers
-  if (!email) {
+  // Strictly restrict x-user-email fallback to non-production / explicit dev flag
+  if (
+    !email &&
+    !userId &&
+    (process.env.NODE_ENV !== "production" || process.env.ALLOW_DEV_HEADERS === "true")
+  ) {
     email = req.headers.get("x-user-email") || req.headers.get("X-User-Email");
   }
 
@@ -67,22 +61,20 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
   }
 
   let user = null;
-  const cleanEmail = email ? email.trim() : null;
-  if (cleanEmail) {
-    user = await User.findOne({
-      $or: [
-        { email: cleanEmail },
-        { email: cleanEmail.toLowerCase() },
-        { email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } },
-      ],
-    });
-  }
 
-  // Robust fallback: if email lookup returned null, fall back to userId
-  if (!user && userId) {
+  // Prefer O(1) indexed _id lookup when JWT carries a valid Mongo ObjectId
+  if (userId && Types.ObjectId.isValid(userId)) {
     try {
       user = await User.findById(userId);
     } catch {}
+  }
+
+  if (!user && email) {
+    const cleanEmail = email.trim();
+    const lowerEmail = cleanEmail.toLowerCase();
+    user = await User.findOne({
+      email: { $in: Array.from(new Set([cleanEmail, lowerEmail])) },
+    });
   }
 
   if (!user) {

@@ -45,7 +45,7 @@ const ChapterSchema = new Schema<IChapter>(
       default: null,
       index: true,
     },
-    likes: { type: Number, default: 0 },
+    likes: { type: Number, default: 0, min: 0 },
     author: { type: String, required: true },
     isDownloadable: { type: Boolean, default: true },
     isProtected: { type: Boolean, default: true }, // ⚡ Screenshot Protection Flag
@@ -61,6 +61,10 @@ const ChapterSchema = new Schema<IChapter>(
   },
   { timestamps: true }
 );
+
+ChapterSchema.index({ comments: 1 });
+ChapterSchema.index({ qnaComments: 1 });
+ChapterSchema.index({ questions: 1 });
 
 export const Chapter =
   models.Chapter || model<IChapter>("Chapter", ChapterSchema);

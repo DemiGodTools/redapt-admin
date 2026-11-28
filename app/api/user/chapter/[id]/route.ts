@@ -12,46 +12,10 @@ import { Comment } from "@/models/Comment.model";
 import { Question } from "@/models/Question.model";
 import { User } from "@/models/User.model";
 import { IS_EARLY_ACCESS_FREE, getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
+import { normalizeCommentsList, sortCommentsNewestFirst } from "@/lib/commentUtils";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function normalizeComments(comments: any[], currentUserEmail?: string | null, currentUserId?: string | null) {
-  if (!Array.isArray(comments)) return [];
-  return comments
-    .filter((c) => c && typeof c === "object" && c._id)
-    .map((c) => {
-      // If c is an unresolved ObjectId or raw ID string without comment fields
-      if (!c.text && !c.by && !c.userName) return null;
-
-      const author = typeof c.by === "object" && c.by !== null ? c.by : null;
-      const authorEmail = c.userEmail;
-      const isOwner =
-        (currentUserEmail && authorEmail && authorEmail.toLowerCase() === currentUserEmail.toLowerCase()) ||
-        (currentUserId && author?._id && author._id.toString() === currentUserId.toString()) ||
-        (currentUserId && c.by && c.by.toString() === currentUserId.toString());
-
-      const name = author?.name || c.userName || (isOwner ? "You" : "Anonymous");
-      const userId = author?.userId || c.userHandle || (isOwner ? "you" : "user");
-      const image = author?.image || c.userImage || "";
-      const profileLevel = author?.profileLevel || 1;
-
-      return {
-        ...c,
-        _id: c._id?.toString?.() || String(c._id),
-        text: String(c.text || ""),
-        createdAt: c.createdAt ? new Date(c.createdAt).toISOString() : new Date().toISOString(),
-        by: {
-          _id: author?._id ? author._id.toString() : (isOwner && currentUserId ? currentUserId : undefined),
-          name,
-          userId,
-          image,
-          profileLevel,
-        },
-      };
-    })
-    .filter(Boolean);
-}
 
 export async function GET(
   req: Request,
@@ -111,12 +75,16 @@ export async function GET(
       return NextResponse.json({ success: false, message: "Chapter not found" }, { status: 404 });
     }
 
-    // ⚡ Normalize comments: Prevents deleted account / recreated user anonymous comments issue
+    // ⚡ Normalize & sort comments newest-first
     if (Array.isArray(chapter.comments)) {
-      chapter.comments = normalizeComments(chapter.comments, userEmail, currentUserId);
+      chapter.comments = sortCommentsNewestFirst(
+        normalizeCommentsList(chapter.comments, userEmail, currentUserId)
+      );
     }
     if (Array.isArray(chapter.qnaComments)) {
-      chapter.qnaComments = normalizeComments(chapter.qnaComments, userEmail, currentUserId);
+      chapter.qnaComments = sortCommentsNewestFirst(
+        normalizeCommentsList(chapter.qnaComments, userEmail, currentUserId)
+      );
     }
 
     // ⚡ 2. REAL-WORLD SECURITY CHECK: Data hiding

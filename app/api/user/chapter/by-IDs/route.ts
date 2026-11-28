@@ -6,6 +6,7 @@ import { Chapter } from "@/models/Chapter.model";
 
 interface ByIdsBody {
   ids: string[];
+  mode?: "card" | "full";
 }
 
 export async function POST(req: Request) {
@@ -21,22 +22,31 @@ export async function POST(req: Request) {
       );
     }
 
-    const validIds = body.ids.filter((id) => Types.ObjectId.isValid(id));
+    const validIds = body.ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .slice(0, 100);
 
     if (validIds.length === 0) {
       return NextResponse.json({
         success: true,
         data: [],
+        chapters: [],
       });
     }
 
-    const chapters = await Chapter.find({
+    const isCardMode = body.mode === "card";
+    let query = Chapter.find({
       _id: { $in: validIds },
-    })
-      .populate("category")
-      .lean();
+    });
+
+    if (isCardMode) {
+      query = query.select("-lyrics -transcript -toc -questions -qnaComments");
+    }
+
+    const chapters = await query.populate("category").lean();
 
     const mappedChapters = chapters.map((c: any) => {
+      if (isCardMode) return c;
       const lyricsVal = c.lyrics || c.transcript || "";
       return {
         ...c,
@@ -48,6 +58,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       count: mappedChapters.length,
+      data: mappedChapters,
       chapters: mappedChapters,
     });
   } catch (err) {
