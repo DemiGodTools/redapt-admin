@@ -10,6 +10,7 @@ const CommentSchema = new Schema<IComment>(
       enum: ["chapter", "qna", "question"],
       required: false,
     },
+    clientRequestId: { type: String, required: false, trim: true, maxlength: 80 },
     userEmail: { type: String, index: true },
     userName: { type: String },
     userHandle: { type: String },
@@ -19,7 +20,13 @@ const CommentSchema = new Schema<IComment>(
   { timestamps: true }
 );
 
-CommentSchema.index({ targetId: 1, targetType: 1, createdAt: -1 });
+// Primary index for O(limit) cursor-based comment pagination at million-row scale
+CommentSchema.index({ targetId: 1, targetType: 1, _id: -1 });
+// Idempotency key to prevent duplicate posts on transient network retries
+CommentSchema.index(
+  { by: 1, clientRequestId: 1 },
+  { unique: true, sparse: true }
+);
 
 export const Comment =
   models.Comment || model<IComment>("Comment", CommentSchema);

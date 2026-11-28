@@ -7,6 +7,7 @@ export interface IQuestion {
   correct: number; // index
   explanation?: string;
   comments: Types.ObjectId[];
+  commentsCount?: number;
   createdAt: Date;
   updatedAt: Date;
 }

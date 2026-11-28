@@ -46,10 +46,20 @@ export async function POST(req: Request) {
     const chapters = await query.populate("category").lean();
 
     const mappedChapters = chapters.map((c: any) => {
-      if (isCardMode) return c;
+      const legacyLen = Array.isArray(c.comments) ? c.comments.length : 0;
+      const commentsCount = Math.max(Number(c.commentsCount) || 0, legacyLen);
+      if (isCardMode) {
+        return {
+          ...c,
+          commentsCount,
+          comments: commentsCount,
+          likes: Math.max(0, Number(c.likes) || 0),
+        };
+      }
       const lyricsVal = c.lyrics || c.transcript || "";
       return {
         ...c,
+        commentsCount,
         lyrics: lyricsVal,
         transcript: lyricsVal,
       };

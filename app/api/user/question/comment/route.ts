@@ -49,7 +49,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const question = await Question.findById(chapterId).select("_id").lean();
+    const question: any = await Question.findById(chapterId)
+      .select("_id comments commentsCount")
+      .lean();
     if (!question) {
       return NextResponse.json(
         { success: false, message: "question not found" },
@@ -69,34 +71,20 @@ export async function POST(req: Request) {
       text: sanitized.text,
     });
 
-    // 2️⃣ Push comment safely into question AND parent chapter qnaComments in parallel
-    const pushToQuestion = async () => {
-      try {
-        await Question.findByIdAndUpdate(chapterId, { $push: { comments: comment._id } });
-      } catch (err: any) {
-        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
-          await Question.findByIdAndUpdate(chapterId, { $set: { comments: [comment._id] } });
-        }
-      }
-    };
+    // 2️⃣ Increment atomic counters without growing unbounded ObjectId arrays
+    const prevQCount = Number(question.commentsCount) || 0;
+    const prevQLen = Array.isArray(question.comments) ? question.comments.length : 0;
+    const updateQuestionCount =
+      prevQCount < prevQLen
+        ? Question.updateOne({ _id: chapterId }, { $set: { commentsCount: prevQLen + 1 } })
+        : Question.updateOne({ _id: chapterId }, { $inc: { commentsCount: 1 } });
 
-    const pushToChapter = async () => {
-      try {
-        await Chapter.findOneAndUpdate(
-          { questions: chapterId },
-          { $push: { qnaComments: comment._id } }
-        );
-      } catch (err: any) {
-        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
-          await Chapter.findOneAndUpdate(
-            { questions: chapterId },
-            { $set: { qnaComments: [comment._id] } }
-          );
-        }
-      }
-    };
+    const updateParentChapterCount = Chapter.updateMany(
+      { questions: chapterId },
+      { $inc: { qnaCommentsCount: 1 } }
+    );
 
-    await Promise.all([pushToQuestion(), pushToChapter()]);
+    await Promise.all([updateQuestionCount, updateParentChapterCount]);
 
     const populatedComment = {
       _id: comment._id.toString(),

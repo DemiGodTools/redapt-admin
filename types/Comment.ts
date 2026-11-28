@@ -5,6 +5,7 @@ export interface IComment {
   by?: Types.ObjectId;
   targetId?: Types.ObjectId;
   targetType?: "chapter" | "qna" | "question";
+  clientRequestId?: string;
   userEmail?: string;
   userName?: string;
   userHandle?: string;

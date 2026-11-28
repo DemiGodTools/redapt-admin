@@ -15,6 +15,7 @@ const QuestionSchema = new Schema<IQuestion>(
     correct: { type: Number, min: 0, required: true },
     explanation: String,
     comments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
+    commentsCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );

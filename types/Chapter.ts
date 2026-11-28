@@ -14,6 +14,8 @@ export interface IChapter {
   isProtected?: boolean;
   comments: Types.ObjectId[];
   qnaComments?: Types.ObjectId[];
+  commentsCount?: number;
+  qnaCommentsCount?: number;
   questions?: Types.ObjectId[];
   cover?: string;
   category: Types.ObjectId;

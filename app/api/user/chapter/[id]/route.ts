@@ -8,11 +8,8 @@ import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import connectMongo from "@/lib/connectMongo";
 import { Chapter } from "@/models/Chapter.model";
-import { Comment } from "@/models/Comment.model";
 import { Question } from "@/models/Question.model";
-import { User } from "@/models/User.model";
 import { IS_EARLY_ACCESS_FREE, getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
-import { normalizeCommentsList, sortCommentsNewestFirst } from "@/lib/commentUtils";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,16 +40,6 @@ export async function GET(
         .populate({ path: "category", strictPopulate: false })
         .populate({ path: "subCategory", strictPopulate: false })
         .populate({
-          path: "comments",
-          strictPopulate: false,
-          populate: { path: "by", select: "name userId image imageMd imageSm profileLevel bio profession visibility streakData", strictPopulate: false },
-        })
-        .populate({
-          path: "qnaComments",
-          strictPopulate: false,
-          populate: { path: "by", select: "name userId image imageMd imageSm profileLevel bio profession visibility streakData", strictPopulate: false },
-        })
-        .populate({
           path: "series",
           strictPopulate: false,
           populate: {
@@ -67,25 +54,22 @@ export async function GET(
 
     const { user, effectivePlan } = authResult;
     const userPlan = effectivePlan;
-    const currentUserId = user?._id ? user._id.toString() : null;
-    const userEmail = user?.email || null;
     const chapter: any = populatedChapter;
 
     if (!chapter) {
       return NextResponse.json({ success: false, message: "Chapter not found" }, { status: 404 });
     }
 
-    // ⚡ Normalize & sort comments newest-first
-    if (Array.isArray(chapter.comments)) {
-      chapter.comments = sortCommentsNewestFirst(
-        normalizeCommentsList(chapter.comments, userEmail, currentUserId)
-      );
-    }
-    if (Array.isArray(chapter.qnaComments)) {
-      chapter.qnaComments = sortCommentsNewestFirst(
-        normalizeCommentsList(chapter.qnaComments, userEmail, currentUserId)
-      );
-    }
+    // Return lightweight O(1) counters instead of populating unbounded comment arrays
+    const legacyCommentCount = Array.isArray(chapter.comments) ? chapter.comments.length : 0;
+    const legacyQnaCount = Array.isArray(chapter.qnaComments) ? chapter.qnaComments.length : 0;
+    const resolvedCommentsCount = Math.max(Number(chapter.commentsCount) || 0, legacyCommentCount);
+    const resolvedQnaCount = Math.max(Number(chapter.qnaCommentsCount) || 0, legacyQnaCount);
+    chapter.commentsCount = resolvedCommentsCount;
+    chapter.qnaCommentsCount = resolvedQnaCount;
+    chapter.comments = resolvedCommentsCount;
+    chapter.qnaComments = resolvedQnaCount;
+    chapter.likes = Math.max(0, Number(chapter.likes) || 0);
 
     // ⚡ 2. REAL-WORLD SECURITY CHECK: Data hiding
     const requiredPlan = Number(chapter.for) || 0;

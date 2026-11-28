@@ -9,25 +9,31 @@ import { getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
 import {
   COMMENT_USER_PROJECTION,
   normalizeCommentsList,
-  sanitizeCommentText,
   sortCommentsNewestFirst,
+  sanitizeCommentText,
 } from "@/lib/commentUtils";
 
-function parsePagination(searchParams: URLSearchParams): {
-  paginate: boolean;
-  page: number;
-  limit: number;
-} {
+function parseLimit(searchParams: URLSearchParams, defaultLimit = 25): number {
   const rawLimit = searchParams.get("limit");
-  const rawPage = searchParams.get("page");
-  if (!rawLimit && !rawPage) {
-    return { paginate: false, page: 1, limit: 0 };
-  }
-  const limit = Math.min(100, Math.max(1, Number(rawLimit) || 25));
-  const page = Math.max(1, Number(rawPage) || 1);
-  return { paginate: true, page, limit };
+  if (!rawLimit) return defaultLimit;
+  return Math.min(50, Math.max(1, Number(rawLimit) || defaultLimit));
 }
 
+function getLegacyCommentIds(doc: any, isQna: boolean): Types.ObjectId[] {
+  const raw = isQna ? doc?.qnaComments : doc?.comments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((id: any) => {
+      const str = typeof id === "string" ? id : String(id?._id || id || "");
+      return Types.ObjectId.isValid(str) ? new Types.ObjectId(str) : null;
+    })
+    .filter((id): id is Types.ObjectId => Boolean(id));
+}
+
+/**
+ * Million-scale O(limit) comment reader using indexed cursor pagination on Comment
+ * plus a bounded O(limit) fallback slice for pre-migration legacy embedded ID arrays.
+ */
 export async function handleGetComments(req: NextRequest) {
   try {
     await connectMongo();
@@ -35,6 +41,9 @@ export async function handleGetComments(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const chapterId = searchParams.get("chapterId");
     const isQna = searchParams.get("qna") === "1";
+    const cursor = searchParams.get("cursor");
+    const rawPage = searchParams.get("page");
+    const limit = parseLimit(searchParams, 25);
 
     if (!chapterId || !Types.ObjectId.isValid(chapterId)) {
       return NextResponse.json(
@@ -43,59 +52,113 @@ export async function handleGetComments(req: NextRequest) {
       );
     }
 
-    const byPopulate = {
-      path: "by",
-      select: COMMENT_USER_PROJECTION,
-      strictPopulate: false,
-    };
+    const targetObjectId = new Types.ObjectId(chapterId);
+    const cursorObjId =
+      cursor && Types.ObjectId.isValid(cursor) ? new Types.ObjectId(cursor) : null;
 
-    let rawComments: any[] | null = null;
+    // 1. Identify target document & lightweight counts/legacy IDs (without full .populate!)
+    let targetDoc: any = await Chapter.findById(targetObjectId)
+      .select("comments qnaComments commentsCount qnaCommentsCount")
+      .lean();
+    let targetType: "chapter" | "qna" | "question" = isQna ? "qna" : "chapter";
 
-    if (isQna) {
-      const chapter = await Chapter.findById(chapterId)
-        .select("qnaComments")
-        .populate({ path: "qnaComments", populate: byPopulate, strictPopulate: false })
+    if (!targetDoc) {
+      targetDoc = await Question.findById(targetObjectId)
+        .select("comments commentsCount")
         .lean();
-      if (chapter) rawComments = (chapter as any).qnaComments || [];
-    } else {
-      const chapter = await Chapter.findById(chapterId)
-        .select("comments")
-        .populate({ path: "comments", populate: byPopulate, strictPopulate: false })
-        .lean();
-      if (chapter) rawComments = (chapter as any).comments || [];
+      targetType = "question";
     }
 
-    if (rawComments === null) {
-      const question = await Question.findById(chapterId)
-        .select("comments")
-        .populate({ path: "comments", populate: byPopulate, strictPopulate: false })
-        .lean();
-      if (question) rawComments = (question as any).comments || [];
-    }
-
-    if (rawComments === null) {
+    if (!targetDoc) {
       return NextResponse.json(
         { success: false, message: "Content not found" },
         { status: 404 }
       );
     }
 
-    const normalized = sortCommentsNewestFirst(normalizeCommentsList(rawComments));
-    const total = normalized.length;
-    const { paginate, page, limit } = parsePagination(searchParams);
+    const legacyIds = getLegacyCommentIds(targetDoc, targetType === "qna");
+    const storedCount =
+      targetType === "qna"
+        ? Number(targetDoc.qnaCommentsCount) || 0
+        : Number(targetDoc.commentsCount) || 0;
+    const total = Math.max(storedCount, legacyIds.length);
 
-    const pagedComments = paginate
-      ? normalized.slice((page - 1) * limit, page * limit)
-      : normalized;
+    // Offset fallback ONLY when a legacy client passes page > 1 without cursor
+    const pageNum = Math.max(1, Number(rawPage) || 1);
+    const skip = !cursorObjId && pageNum > 1 ? (pageNum - 1) * limit : 0;
+
+    // 2. Indexed O(limit) cursor query on Comment collection
+    const indexedFilter: any = { targetId: targetObjectId, targetType };
+    if (cursorObjId) {
+      indexedFilter._id = { $lt: cursorObjId };
+    }
+
+    let docs: any[] = await Comment.find(indexedFilter)
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit + 1)
+      .populate({
+        path: "by",
+        select: COMMENT_USER_PROJECTION,
+        strictPopulate: false,
+      })
+      .lean();
+
+    const hasMoreIndexed = docs.length > limit;
+    if (hasMoreIndexed) {
+      docs = docs.slice(0, limit);
+    }
+
+    // 3. Bridge: if indexed results didn't fill the page, fill remainder from bounded legacy ID slice
+    let hasMoreLegacy = false;
+    if (docs.length < limit && legacyIds.length > 0) {
+      const seenIds = new Set(docs.map((d) => String(d._id)));
+      const reversedLegacy = [...legacyIds].reverse();
+      const filteredLegacy = reversedLegacy.filter((id) => {
+        const idStr = String(id);
+        if (seenIds.has(idStr)) return false;
+        if (cursorObjId && idStr >= cursorObjId.toString()) return false;
+        return true;
+      });
+
+      const indexedTotalOnTarget =
+        skip > 0 ? await Comment.countDocuments({ targetId: targetObjectId, targetType }) : 0;
+      const legacyOffset = Math.max(0, skip - indexedTotalOnTarget);
+      const needed = limit - docs.length;
+      const sliceIds = filteredLegacy.slice(legacyOffset, legacyOffset + needed);
+      hasMoreLegacy = filteredLegacy.length > legacyOffset + sliceIds.length;
+
+      if (sliceIds.length > 0) {
+        const legacyDocs = await Comment.find({ _id: { $in: sliceIds } })
+          .populate({
+            path: "by",
+            select: COMMENT_USER_PROJECTION,
+            strictPopulate: false,
+          })
+          .lean();
+        docs = [...docs, ...sortCommentsNewestFirst(legacyDocs)];
+      }
+    } else if (!hasMoreIndexed && legacyIds.length > 0 && docs.length === limit) {
+      const lastIdStr = String(docs[docs.length - 1]._id);
+      hasMoreLegacy = legacyIds.some((id) => String(id) < lastIdStr);
+    }
+
+    const normalized = sortCommentsNewestFirst(normalizeCommentsList(docs));
+    const hasMore = hasMoreIndexed || hasMoreLegacy;
+    const nextCursor =
+      hasMore && normalized.length > 0
+        ? String(normalized[normalized.length - 1]._id)
+        : null;
 
     return NextResponse.json(
       {
         success: true,
-        data: pagedComments,
-        comments: pagedComments,
-        total,
-        page,
-        hasMore: paginate ? page * limit < total : false,
+        data: normalized,
+        comments: normalized,
+        total: Math.max(total, normalized.length),
+        page: pageNum,
+        nextCursor,
+        hasMore,
       },
       { headers: { "Cache-Control": "no-store" } }
     );
@@ -136,6 +199,11 @@ export async function handlePostComment(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const { chapterId, text, isQna } = body;
+    const rawReqId =
+      typeof body?.clientRequestId === "string"
+        ? body.clientRequestId.trim().slice(0, 80)
+        : "";
+    const clientRequestId = rawReqId || undefined;
 
     if (!chapterId || !Types.ObjectId.isValid(chapterId)) {
       return NextResponse.json(
@@ -152,86 +220,155 @@ export async function handlePostComment(req: Request) {
       );
     }
 
+    // Idempotency guard: safe against transient socket-drop retries
+    if (clientRequestId) {
+      const existing = await Comment.findOne({
+        by: user._id,
+        clientRequestId,
+      })
+        .populate({ path: "by", select: COMMENT_USER_PROJECTION, strictPopulate: false })
+        .lean();
+      if (existing) {
+        const normalizedExisting = normalizeCommentsList(
+          [existing],
+          user.email,
+          user._id.toString()
+        )[0];
+        return NextResponse.json({
+          success: true,
+          message: "Comment added successfully",
+          data: normalizedExisting,
+          comment: normalizedExisting,
+        });
+      }
+    }
+
     const commentId = new Types.ObjectId();
     const targetObjectId = new Types.ObjectId(chapterId);
     const isQnaTarget = Boolean(isQna || body.qna === 1 || body.qna === "1");
-    const updateField = isQnaTarget ? "qnaComments" : "comments";
+    const targetType: "chapter" | "qna" | "question" = isQnaTarget ? "qna" : "chapter";
+    const countField = isQnaTarget ? "qnaCommentsCount" : "commentsCount";
+    const arrayField = isQnaTarget ? "qnaComments" : "comments";
 
-    const pushToChapter = async (filter: any, field: string) => {
-      try {
-        return await Chapter.findOneAndUpdate(
-          filter,
-          { $push: { [field]: commentId } },
-          { select: { _id: 1 }, lean: true }
-        );
-      } catch (err: any) {
-        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
-          return await Chapter.findOneAndUpdate(
-            filter,
-            { $set: { [field]: [commentId] } },
-            { select: { _id: 1 }, lean: true }
-          );
-        }
-        throw err;
-      }
-    };
-
-    const pushToQuestion = async (qId: any) => {
-      try {
-        return await Question.findByIdAndUpdate(
-          qId,
-          { $push: { comments: commentId } },
-          { select: { _id: 1 }, lean: true }
-        );
-      } catch (err: any) {
-        if (err?.codeName === "PathNotArray" || err?.message?.includes("must be an array")) {
-          return await Question.findByIdAndUpdate(
-            qId,
-            { $set: { comments: [commentId] } },
-            { select: { _id: 1 }, lean: true }
-          );
-        }
-        throw err;
-      }
-    };
-
-    const [comment, updatedChapter] = await Promise.all([
-      Comment.create({
+    // Create Comment first with indexed target metadata & optional idempotency key
+    let createdDoc: any;
+    try {
+      createdDoc = await Comment.create({
         _id: commentId,
         by: user._id,
         targetId: targetObjectId,
-        targetType: isQnaTarget ? "qna" : "chapter",
+        targetType,
+        ...(clientRequestId ? { clientRequestId } : {}),
         userEmail: user.email,
         userName: user.name || "Reader",
         userHandle: user.userId || user.name || "user",
         userImage: user.image || "",
         text: sanitized.text,
-      }),
-      pushToChapter({ _id: targetObjectId }, updateField),
-    ]);
+      });
+    } catch (createErr: any) {
+      if (createErr?.code === 11000 && clientRequestId) {
+        const existing = await Comment.findOne({ by: user._id, clientRequestId }).lean();
+        if (existing) {
+          const normalizedExisting = normalizeCommentsList(
+            [existing],
+            user.email,
+            user._id.toString()
+          )[0];
+          return NextResponse.json({
+            success: true,
+            message: "Comment added successfully",
+            data: normalizedExisting,
+            comment: normalizedExisting,
+          });
+        }
+      }
+      throw createErr;
+    }
 
-    if (!updatedChapter) {
-      const [parentChapter, updatedQuestion] = await Promise.all([
-        pushToChapter({ questions: targetObjectId }, "qnaComments"),
-        pushToQuestion(targetObjectId),
+    // Check target exists & update atomic counter WITHOUT unbounded BSON array bloat
+    const existingChapter: any = await Chapter.findById(targetObjectId)
+      .select(`_id ${countField} ${arrayField}`)
+      .lean();
+
+    if (existingChapter) {
+      const prevLegacyLen = Array.isArray(existingChapter[arrayField])
+        ? existingChapter[arrayField].length
+        : 0;
+      const prevCount = Number(existingChapter[countField]) || 0;
+      if (prevCount < prevLegacyLen) {
+        await Chapter.updateOne(
+          { _id: targetObjectId },
+          { $set: { [countField]: prevLegacyLen + 1 } }
+        );
+      } else {
+        await Chapter.updateOne(
+          { _id: targetObjectId },
+          { $inc: { [countField]: 1 } }
+        );
+      }
+    } else {
+      // Target might be a Question ID (or Chapter owning a Question)
+      const [parentChapter, existingQuestion] = await Promise.all([
+        Chapter.findOne({ questions: targetObjectId })
+          .select("_id qnaCommentsCount qnaComments")
+          .lean() as Promise<any>,
+        Question.findById(targetObjectId)
+          .select("_id commentsCount comments")
+          .lean() as Promise<any>,
       ]);
-      if (!parentChapter && !updatedQuestion) {
+
+      if (!parentChapter && !existingQuestion) {
         await Comment.findByIdAndDelete(commentId).catch(() => {});
         return NextResponse.json(
           { success: false, message: "Content not found" },
           { status: 404 }
         );
       }
-      if (updatedQuestion) {
-        await Comment.updateOne(
-          { _id: commentId },
-          { $set: { targetType: "question" } }
-        ).catch(() => {});
+
+      const ops: Promise<any>[] = [];
+      if (parentChapter) {
+        const prevLen = Array.isArray(parentChapter.qnaComments)
+          ? parentChapter.qnaComments.length
+          : 0;
+        const prevCount = Number(parentChapter.qnaCommentsCount) || 0;
+        ops.push(
+          prevCount < prevLen
+            ? Chapter.updateOne(
+                { _id: parentChapter._id },
+                { $set: { qnaCommentsCount: prevLen + 1 } }
+              )
+            : Chapter.updateOne(
+                { _id: parentChapter._id },
+                { $inc: { qnaCommentsCount: 1 } }
+              )
+        );
       }
+      if (existingQuestion) {
+        const prevLen = Array.isArray(existingQuestion.comments)
+          ? existingQuestion.comments.length
+          : 0;
+        const prevCount = Number(existingQuestion.commentsCount) || 0;
+        ops.push(
+          prevCount < prevLen
+            ? Question.updateOne(
+                { _id: targetObjectId },
+                { $set: { commentsCount: prevLen + 1 } }
+              )
+            : Question.updateOne(
+                { _id: targetObjectId },
+                { $inc: { commentsCount: 1 } }
+              )
+        );
+        ops.push(
+          Comment.updateOne({ _id: commentId }, { $set: { targetType: "question" } })
+        );
+      }
+      await Promise.all(ops);
     }
 
     const populatedComment = {
       _id: commentId.toString(),
+      ...(clientRequestId ? { clientRequestId } : {}),
       by: {
         _id: user._id,
         name: user.name,
@@ -246,8 +383,8 @@ export async function handlePostComment(req: Request) {
       userHandle: user.userId,
       userImage: user.image,
       text: sanitized.text,
-      createdAt: comment.createdAt || new Date().toISOString(),
-      updatedAt: comment.updatedAt || new Date().toISOString(),
+      createdAt: createdDoc.createdAt || new Date().toISOString(),
+      updatedAt: createdDoc.updatedAt || new Date().toISOString(),
     };
 
     return NextResponse.json({
@@ -340,38 +477,69 @@ export async function handleDeleteComment(req: NextRequest) {
     }
 
     const commentObjectId = comment._id;
+    const candidateTargetId =
+      comment.targetId?.toString() ||
+      (chapterId && mongoose.Types.ObjectId.isValid(chapterId) ? chapterId : null);
+
     let pulledKnownTarget = false;
 
-    const candidateTargetId =
-      chapterId && mongoose.Types.ObjectId.isValid(chapterId)
-        ? chapterId
-        : comment.targetId?.toString();
-
     if (candidateTargetId && mongoose.Types.ObjectId.isValid(candidateTargetId)) {
-      const [chUpdate, qUpdate] = await Promise.all([
-        Chapter.updateOne(
-          { _id: candidateTargetId },
-          { $pull: { comments: commentObjectId, qnaComments: commentObjectId } }
-        ),
-        Question.updateOne(
-          { _id: candidateTargetId },
+      const targetObj = new Types.ObjectId(candidateTargetId);
+      const isQnaComment = comment.targetType === "qna";
+
+      if (comment.targetType === "question") {
+        await Question.updateOne(
+          { _id: targetObj },
           { $pull: { comments: commentObjectId } }
-        ),
-      ]);
-      pulledKnownTarget =
-        (chUpdate?.modifiedCount || 0) > 0 || (qUpdate?.modifiedCount || 0) > 0;
+        );
+        await Question.updateOne(
+          { _id: targetObj, commentsCount: { $gt: 0 } },
+          { $inc: { commentsCount: -1 } }
+        );
+        pulledKnownTarget = true;
+      } else {
+        const countKey = isQnaComment ? "qnaCommentsCount" : "commentsCount";
+        const [chRes, qRes] = await Promise.all([
+          Chapter.updateOne(
+            { _id: targetObj },
+            { $pull: { comments: commentObjectId, qnaComments: commentObjectId } }
+          ),
+          Question.updateOne(
+            { _id: targetObj },
+            { $pull: { comments: commentObjectId } }
+          ),
+        ]);
+        if ((chRes?.matchedCount || 0) > 0) {
+          await Chapter.updateOne(
+            { _id: targetObj, [countKey]: { $gt: 0 } },
+            { $inc: { [countKey]: -1 } }
+          );
+          pulledKnownTarget = true;
+        }
+        if ((qRes?.modifiedCount || 0) > 0) {
+          await Question.updateOne(
+            { _id: targetObj, commentsCount: { $gt: 0 } },
+            { $inc: { commentsCount: -1 } }
+          );
+          pulledKnownTarget = true;
+        }
+      }
     }
 
-    // Only run indexed fallback cleanup when comment reference wasn't already removed from known target
+    // Legacy fallback only if comment lacked targetId & didn't match chapterId
     if (!pulledKnownTarget) {
       await Promise.allSettled([
         Chapter.updateMany(
-          { $or: [{ comments: commentObjectId }, { qnaComments: commentObjectId }] },
-          { $pull: { comments: commentObjectId, qnaComments: commentObjectId } }
+          { comments: commentObjectId },
+          { $pull: { comments: commentObjectId }, $inc: { commentsCount: -1 } }
+        ),
+        Chapter.updateMany(
+          { qnaComments: commentObjectId },
+          { $pull: { qnaComments: commentObjectId }, $inc: { qnaCommentsCount: -1 } }
         ),
         Question.updateMany(
           { comments: commentObjectId },
-          { $pull: { comments: commentObjectId } }
+          { $pull: { comments: commentObjectId }, $inc: { commentsCount: -1 } }
         ),
       ]);
     }
@@ -384,7 +552,7 @@ export async function handleDeleteComment(req: NextRequest) {
       commentId: commentObjectId.toString(),
     });
   } catch (error) {
-    console.error("DELETE COMMENT ERROR:", error);
+    console.error("REMOVE/DELETE COMMENT ERROR:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
       { status: 500 }

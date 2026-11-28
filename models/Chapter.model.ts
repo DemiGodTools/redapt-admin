@@ -25,6 +25,8 @@ const ChapterSchema = new Schema<IChapter>(
     isTrending: { type: Boolean, default: false },
     comments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
     qnaComments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
+    commentsCount: { type: Number, default: 0, min: 0 },
+    qnaCommentsCount: { type: Number, default: 0, min: 0 },
     questions: [{ type: Schema.Types.ObjectId, ref: "Question", default: [] }],
     cover: { type: String, required: true },
     category: {
