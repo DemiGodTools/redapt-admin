@@ -52,22 +52,27 @@ async function connectMongo(): Promise<typeof mongoose> {
         serverSelectionTimeoutMS: 5000,
         connectTimeoutMS: 5000,
         socketTimeoutMS: 20000,
-        maxPoolSize: 10,
-        minPoolSize: 1,
+        maxPoolSize: 5,
+        minPoolSize: 0,
         maxIdleTimeMS: 30000,
       };
+      // Prefer direct replica-set URI when configured to avoid 5s SRV DNS timeouts on serverless/ISP networks
+      const primaryUri =
+        DIRECT_MONGODB_URI && DIRECT_MONGODB_URI !== MONGODB_URI
+          ? DIRECT_MONGODB_URI
+          : MONGODB_URI;
+      const fallbackUri = primaryUri !== MONGODB_URI ? MONGODB_URI : "";
       try {
-        return await mongoose.connect(MONGODB_URI, poolOptions);
+        return await mongoose.connect(primaryUri, poolOptions);
       } catch (err: any) {
         if (
+          fallbackUri &&
           (err?.message?.includes("querySrv") ||
             err?.message?.includes("ETIMEOUT") ||
-            err?.message?.includes("ENOTFOUND")) &&
-          DIRECT_MONGODB_URI &&
-          DIRECT_MONGODB_URI !== MONGODB_URI
+            err?.message?.includes("ENOTFOUND"))
         ) {
-          console.warn("⚠️ SRV resolution failed, falling back to direct replica-set URI...");
-          return await mongoose.connect(DIRECT_MONGODB_URI, poolOptions);
+          console.warn("⚠️ Primary Mongo URI failed, falling back to secondary URI...");
+          return await mongoose.connect(fallbackUri, poolOptions);
         }
         throw err;
       }

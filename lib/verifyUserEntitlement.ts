@@ -60,12 +60,14 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
     return { user: null, effectivePlan: IS_EARLY_ACCESS_FREE ? 3 : 0, isExpired: false };
   }
 
-  let user = null;
+  let user: any = null;
+  const userProjection =
+    "_id name userId email image imageMd imageSm profileLevel subscription";
 
   // Prefer O(1) indexed _id lookup when JWT carries a valid Mongo ObjectId
   if (userId && Types.ObjectId.isValid(userId)) {
     try {
-      user = await User.findById(userId);
+      user = await User.findById(userId).select(userProjection).lean();
     } catch {}
   }
 
@@ -74,7 +76,9 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
     const lowerEmail = cleanEmail.toLowerCase();
     user = await User.findOne({
       email: { $in: Array.from(new Set([cleanEmail, lowerEmail])) },
-    });
+    })
+      .select(userProjection)
+      .lean();
   }
 
   if (!user) {
@@ -105,7 +109,10 @@ export async function getVerifiedUserAndEntitlement(req: Request) {
       plan: 0,
       expiresOn: user.subscription.expiresOn,
     };
-    await user.save();
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { "subscription.plan": 0 } }
+    );
   }
 
   return {

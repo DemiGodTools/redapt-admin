@@ -220,51 +220,35 @@ export async function handlePostComment(req: Request) {
       );
     }
 
-    // Idempotency guard: safe against transient socket-drop retries
-    if (clientRequestId) {
-      const existing = await Comment.findOne({
-        by: user._id,
-        clientRequestId,
-      })
-        .populate({ path: "by", select: COMMENT_USER_PROJECTION, strictPopulate: false })
-        .lean();
-      if (existing) {
-        const normalizedExisting = normalizeCommentsList(
-          [existing],
-          user.email,
-          user._id.toString()
-        )[0];
-        return NextResponse.json({
-          success: true,
-          message: "Comment added successfully",
-          data: normalizedExisting,
-          comment: normalizedExisting,
-        });
-      }
-    }
-
     const commentId = new Types.ObjectId();
     const targetObjectId = new Types.ObjectId(chapterId);
     const isQnaTarget = Boolean(isQna || body.qna === 1 || body.qna === "1");
     const targetType: "chapter" | "qna" | "question" = isQnaTarget ? "qna" : "chapter";
     const countField = isQnaTarget ? "qnaCommentsCount" : "commentsCount";
-    const arrayField = isQnaTarget ? "qnaComments" : "comments";
 
-    // Create Comment first with indexed target metadata & optional idempotency key
+    // Run Comment.create (with unique clientRequestId index for idempotency) and atomic Chapter $inc in parallel
     let createdDoc: any;
+    let updatedChapter: any;
     try {
-      createdDoc = await Comment.create({
-        _id: commentId,
-        by: user._id,
-        targetId: targetObjectId,
-        targetType,
-        ...(clientRequestId ? { clientRequestId } : {}),
-        userEmail: user.email,
-        userName: user.name || "Reader",
-        userHandle: user.userId || user.name || "user",
-        userImage: user.image || "",
-        text: sanitized.text,
-      });
+      [createdDoc, updatedChapter] = await Promise.all([
+        Comment.create({
+          _id: commentId,
+          by: user._id,
+          targetId: targetObjectId,
+          targetType,
+          ...(clientRequestId ? { clientRequestId } : {}),
+          userEmail: user.email,
+          userName: user.name || "Reader",
+          userHandle: user.userId || user.name || "user",
+          userImage: user.image || "",
+          text: sanitized.text,
+        }),
+        Chapter.findOneAndUpdate(
+          { _id: targetObjectId },
+          { $inc: { [countField]: 1 } },
+          { projection: { _id: 1 } }
+        ).lean(),
+      ]);
     } catch (createErr: any) {
       if (createErr?.code === 11000 && clientRequestId) {
         const existing = await Comment.findOne({ by: user._id, clientRequestId }).lean();
@@ -285,36 +269,19 @@ export async function handlePostComment(req: Request) {
       throw createErr;
     }
 
-    // Check target exists & update atomic counter WITHOUT unbounded BSON array bloat
-    const existingChapter: any = await Chapter.findById(targetObjectId)
-      .select(`_id ${countField} ${arrayField}`)
-      .lean();
-
-    if (existingChapter) {
-      const prevLegacyLen = Array.isArray(existingChapter[arrayField])
-        ? existingChapter[arrayField].length
-        : 0;
-      const prevCount = Number(existingChapter[countField]) || 0;
-      if (prevCount < prevLegacyLen) {
-        await Chapter.updateOne(
-          { _id: targetObjectId },
-          { $set: { [countField]: prevLegacyLen + 1 } }
-        );
-      } else {
-        await Chapter.updateOne(
-          { _id: targetObjectId },
-          { $inc: { [countField]: 1 } }
-        );
-      }
-    } else {
+    if (!updatedChapter) {
       // Target might be a Question ID (or Chapter owning a Question)
       const [parentChapter, existingQuestion] = await Promise.all([
-        Chapter.findOne({ questions: targetObjectId })
-          .select("_id qnaCommentsCount qnaComments")
-          .lean() as Promise<any>,
-        Question.findById(targetObjectId)
-          .select("_id commentsCount comments")
-          .lean() as Promise<any>,
+        Chapter.findOneAndUpdate(
+          { questions: targetObjectId },
+          { $inc: { qnaCommentsCount: 1 } },
+          { projection: { _id: 1 } }
+        ).lean() as Promise<any>,
+        Question.findOneAndUpdate(
+          { _id: targetObjectId },
+          { $inc: { commentsCount: 1 } },
+          { projection: { _id: 1 } }
+        ).lean() as Promise<any>,
       ]);
 
       if (!parentChapter && !existingQuestion) {
@@ -325,45 +292,12 @@ export async function handlePostComment(req: Request) {
         );
       }
 
-      const ops: Promise<any>[] = [];
-      if (parentChapter) {
-        const prevLen = Array.isArray(parentChapter.qnaComments)
-          ? parentChapter.qnaComments.length
-          : 0;
-        const prevCount = Number(parentChapter.qnaCommentsCount) || 0;
-        ops.push(
-          prevCount < prevLen
-            ? Chapter.updateOne(
-                { _id: parentChapter._id },
-                { $set: { qnaCommentsCount: prevLen + 1 } }
-              )
-            : Chapter.updateOne(
-                { _id: parentChapter._id },
-                { $inc: { qnaCommentsCount: 1 } }
-              )
-        );
-      }
       if (existingQuestion) {
-        const prevLen = Array.isArray(existingQuestion.comments)
-          ? existingQuestion.comments.length
-          : 0;
-        const prevCount = Number(existingQuestion.commentsCount) || 0;
-        ops.push(
-          prevCount < prevLen
-            ? Question.updateOne(
-                { _id: targetObjectId },
-                { $set: { commentsCount: prevLen + 1 } }
-              )
-            : Question.updateOne(
-                { _id: targetObjectId },
-                { $inc: { commentsCount: 1 } }
-              )
-        );
-        ops.push(
-          Comment.updateOne({ _id: commentId }, { $set: { targetType: "question" } })
+        await Comment.updateOne(
+          { _id: commentId },
+          { $set: { targetType: "question" } }
         );
       }
-      await Promise.all(ops);
     }
 
     const populatedComment = {
@@ -440,7 +374,12 @@ export async function handleDeleteComment(req: NextRequest) {
       );
     }
 
-    if (typeof commentId === "string" && commentId.startsWith("temp_")) {
+    if (
+      typeof commentId === "string" &&
+      (commentId.startsWith("temp_") ||
+        commentId.startsWith("posting_") ||
+        commentId.startsWith("comment_"))
+    ) {
       return NextResponse.json({
         success: true,
         message: "Temporary comment acknowledged as removed",
@@ -455,7 +394,9 @@ export async function handleDeleteComment(req: NextRequest) {
       );
     }
 
-    const comment = await Comment.findById(commentId);
+    const comment: any = await Comment.findById(commentId)
+      .select("_id by userEmail targetId targetType")
+      .lean();
     if (!comment) {
       return NextResponse.json({
         success: true,
@@ -527,8 +468,9 @@ export async function handleDeleteComment(req: NextRequest) {
     }
 
     // Legacy fallback only if comment lacked targetId & didn't match chapterId
+    const postDeleteOps: Promise<any>[] = [Comment.findByIdAndDelete(commentObjectId)];
     if (!pulledKnownTarget) {
-      await Promise.allSettled([
+      postDeleteOps.push(
         Chapter.updateMany(
           { comments: commentObjectId },
           { $pull: { comments: commentObjectId }, $inc: { commentsCount: -1 } }
@@ -540,11 +482,10 @@ export async function handleDeleteComment(req: NextRequest) {
         Question.updateMany(
           { comments: commentObjectId },
           { $pull: { comments: commentObjectId }, $inc: { commentsCount: -1 } }
-        ),
-      ]);
+        )
+      );
     }
-
-    await Comment.findByIdAndDelete(commentObjectId);
+    await Promise.allSettled(postDeleteOps);
 
     return NextResponse.json({
       success: true,
