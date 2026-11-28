@@ -7,6 +7,7 @@ import { getVerifiedUserAndEntitlement } from "@/lib/verifyUserEntitlement";
 
 interface LikeChapterBody {
   chapterId: string;
+  desiredLiked?: boolean;
 }
 
 export async function POST(req: Request) {
@@ -41,31 +42,38 @@ export async function POST(req: Request) {
       (id: any) => id?.toString() === chapterId.toString()
     );
 
+    // Prefer explicit desiredLiked from idempotent clients; fall back to toggle for legacy builds.
+    const targetLiked =
+      typeof body?.desiredLiked === "boolean" ? body.desiredLiked : !alreadyLiked;
+
     let updatedLikesCount = 0;
 
-    if (alreadyLiked) {
-      // 1. Remove from user likes
-      await User.updateOne(
-        { _id: user._id },
+    if (!targetLiked) {
+      // Atomic pull: only decrement Chapter.likes if this user actually had it liked
+      const pullRes = await User.updateOne(
+        { _id: user._id, likes: chapterId },
         { $pull: { likes: chapterId } }
       );
 
-      // 2. Decrement chapter likes count (floor at 0)
-      let updatedDoc = await Chapter.findOneAndUpdate(
-        { _id: chapterId, likes: { $gt: 0 } },
-        { $inc: { likes: -1 } },
-        { new: true }
-      );
-
-      if (!updatedDoc) {
-        updatedDoc = await Chapter.findByIdAndUpdate(
-          chapterId,
-          { $set: { likes: 0 } },
+      let updatedDoc;
+      if (pullRes.modifiedCount > 0) {
+        updatedDoc = await Chapter.findOneAndUpdate(
+          { _id: chapterId, likes: { $gt: 0 } },
+          { $inc: { likes: -1 } },
           { new: true }
         );
+        if (!updatedDoc) {
+          updatedDoc = await Chapter.findByIdAndUpdate(
+            chapterId,
+            { $set: { likes: 0 } },
+            { new: true }
+          );
+        }
+      } else {
+        updatedDoc = await Chapter.findById(chapterId);
       }
 
-      updatedLikesCount = Number(updatedDoc?.likes) || 0;
+      updatedLikesCount = Math.max(0, Number(updatedDoc?.likes) || 0);
 
       return NextResponse.json({
         success: true,
@@ -74,20 +82,22 @@ export async function POST(req: Request) {
         message: "Chapter unliked",
       });
     } else {
-      // 1. Add to user likes
-      await User.updateOne(
-        { _id: user._id },
+      // Atomic add: only increment Chapter.likes if chapterId was NOT already in user.likes
+      const addRes = await User.updateOne(
+        { _id: user._id, likes: { $ne: chapterId } },
         { $addToSet: { likes: chapterId } }
       );
 
-      // 2. Increment chapter likes count
-      const updatedDoc = await Chapter.findByIdAndUpdate(
-        chapterId,
-        { $inc: { likes: 1 } },
-        { new: true }
-      );
+      const updatedDoc =
+        addRes.modifiedCount > 0
+          ? await Chapter.findByIdAndUpdate(
+              chapterId,
+              { $inc: { likes: 1 } },
+              { new: true }
+            )
+          : await Chapter.findById(chapterId);
 
-      updatedLikesCount = Number(updatedDoc?.likes) || 1;
+      updatedLikesCount = Math.max(0, Number(updatedDoc?.likes) || 1);
 
       return NextResponse.json({
         success: true,
